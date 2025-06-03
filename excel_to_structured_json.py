@@ -25,8 +25,8 @@ class ExcelToStructuredJSON:
             bool: True nếu thành công, False nếu lỗi
         """
         try:
-            # Đọc sheet Market Research
-            df = pd.read_excel(excel_path, sheet_name="Market Research")
+            # Đọc sheet template (updated from "Market Research")
+            df = pd.read_excel(excel_path, sheet_name="template")
             
             print("✅ Đã đọc file Excel thành công!")
             print(f"📊 Kích thước dữ liệu: {df.shape}")
@@ -146,13 +146,13 @@ class ExcelToStructuredJSON:
 def convert_market_research_to_json():
     """
     Hàm legacy để tương thích với CLI
-    Chuyển đổi sheet 'Market Research' từ Research Framework.xlsx 
+    Chuyển đổi sheet 'template' từ market research template.xlsx 
     thành JSON có cấu trúc với purpose và layers
     """
     
-    # Sử dụng class mới
+    # Sử dụng class mới - updated to use new file name
     converter = ExcelToStructuredJSON()
-    excel_file = "input/Research Framework.xlsx"
+    excel_file = "input/market research template.xlsx"
     json_file = "output/market_research_structured.json"
     
     success = converter.convert_excel_to_json(excel_file, json_file)

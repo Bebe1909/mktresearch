@@ -291,7 +291,7 @@ def run_research(topic, market, uploaded_file, is_test_mode, custom_purpose):
                 f.write(uploaded_file.getbuffer())
         else:
             # Use default
-            excel_path = 'input/Research Framework.xlsx'
+            excel_path = 'input/market research template.xlsx'
             if not os.path.exists(excel_path):
                 st.error("Default framework not found! Please upload an Excel file.")
                 return
@@ -730,7 +730,7 @@ def show_settings_page():
         st.text(f"Output Directory: {'✅' if output_exists else '❌'}")
         
         # Check default framework
-        framework_exists = os.path.exists('input/Research Framework.xlsx')
+        framework_exists = os.path.exists('input/market research template.xlsx')
         st.text(f"Default Framework: {'✅' if framework_exists else '❌'}")
     
     with col2:
