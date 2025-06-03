@@ -15,8 +15,32 @@ import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 
+# Get OpenAI API key from multiple sources (deployment-friendly)
+def get_openai_api_key():
+    # 1. Try Streamlit secrets (for Streamlit Cloud deployment)
+    try:
+        return st.secrets["OPENAI_API_KEY"]
+    except:
+        pass
+    
+    # 2. Try environment variable
+    env_key = os.getenv("OPENAI_API_KEY")
+    if env_key:
+        return env_key
+    
+    # 3. Try importing from config (local development)
+    try:
+        from config import OPENAI_API_KEY
+        return OPENAI_API_KEY
+    except ImportError:
+        pass
+    
+    # 4. Default fallback
+    return "your-openai-api-key-here"
+
+OPENAI_API_KEY = get_openai_api_key()
+
 # Import our core modules
-from config import OPENAI_API_KEY
 from excel_to_structured_json import ExcelToStructuredJSON
 from openai_market_research import OpenAIMarketResearch
 from export_comprehensive_report import create_comprehensive_word_report, find_latest_research_file
@@ -625,47 +649,66 @@ def show_settings_page():
     # API Configuration
     st.subheader("🔑 API Configuration")
     
+    # Check current API key status
     current_key = OPENAI_API_KEY if OPENAI_API_KEY != "your-openai-api-key-here" else ""
+    key_status = "✅ Configured" if current_key else "❌ Not configured"
     
-    with st.form("api_settings"):
-        api_key = st.text_input(
-            "OpenAI API Key",
-            value=current_key,
-            type="password",
-            help="Enter your OpenAI API key from https://platform.openai.com/api-keys"
-        )
-        
-        model_choice = st.selectbox(
-            "AI Model",
-            ["gpt-3.5-turbo", "gpt-4"],
-            help="gpt-3.5-turbo is recommended for cost-effectiveness"
-        )
-        
-        if st.form_submit_button("💾 Save API Settings"):
-            if api_key:
-                # Update config file
-                try:
-                    with open('config.py', 'r', encoding='utf-8') as f:
-                        content = f.read()
-                    
-                    # Replace API key
-                    import re
-                    new_content = re.sub(
-                        r'OPENAI_API_KEY\s*=\s*["\'][^"\']*["\']',
-                        f'OPENAI_API_KEY = "{api_key}"',
-                        content
-                    )
-                    
-                    with open('config.py', 'w', encoding='utf-8') as f:
-                        f.write(new_content)
-                    
-                    st.success("✅ API key saved successfully!")
-                    st.info("Please restart the application to apply changes.")
-                    
-                except Exception as e:
-                    st.error(f"Error saving API key: {str(e)}")
-            else:
-                st.error("Please enter a valid API key!")
+    st.info(f"API Key Status: {key_status}")
+    
+    # For deployment, show instructions for Streamlit Cloud
+    if not os.path.exists('config.py'):
+        st.warning("🌐 **Deployment Mode Detected**")
+        st.markdown("""
+        **For Streamlit Cloud deployment:**
+        1. Go to your app dashboard
+        2. Click **Settings** → **Secrets**
+        3. Add your API key:
+        ```toml
+        OPENAI_API_KEY = "your-actual-openai-api-key-here"
+        ```
+        4. Save and restart your app
+        """)
+    else:
+        # Local development mode
+        with st.form("api_settings"):
+            api_key = st.text_input(
+                "OpenAI API Key",
+                value=current_key,
+                type="password",
+                help="Enter your OpenAI API key from https://platform.openai.com/api-keys"
+            )
+            
+            model_choice = st.selectbox(
+                "AI Model",
+                ["gpt-3.5-turbo", "gpt-4"],
+                help="gpt-3.5-turbo is recommended for cost-effectiveness"
+            )
+            
+            if st.form_submit_button("💾 Save API Settings"):
+                if api_key:
+                    # Update config file (local development only)
+                    try:
+                        with open('config.py', 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        # Replace API key
+                        import re
+                        new_content = re.sub(
+                            r'return ".*"  # Fallback',
+                            f'return "{api_key}"  # Fallback',
+                            content
+                        )
+                        
+                        with open('config.py', 'w', encoding='utf-8') as f:
+                            f.write(new_content)
+                        
+                        st.success("✅ API key saved successfully!")
+                        st.info("Please restart the application to apply changes.")
+                        
+                    except Exception as e:
+                        st.error(f"Error saving API key: {str(e)}")
+                else:
+                    st.error("Please enter a valid API key!")
     
     # System Information
     st.markdown("---")
@@ -676,6 +719,11 @@ def show_settings_page():
     with col1:
         st.info("🐍 Python Environment")
         st.text(f"Streamlit: {st.__version__}")
+        
+        # Deployment detection
+        is_cloud = not os.path.exists('config.py')
+        deployment_type = "☁️ Streamlit Cloud" if is_cloud else "💻 Local Development"
+        st.text(f"Environment: {deployment_type}")
         
         # Check if output directory exists
         output_exists = os.path.exists('output')
