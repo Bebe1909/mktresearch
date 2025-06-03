@@ -45,6 +45,23 @@ from excel_to_structured_json import ExcelToStructuredJSON
 from openai_market_research import OpenAIMarketResearch
 from export_comprehensive_report import create_comprehensive_word_report, find_latest_research_file
 
+# World countries list for Target Market selection
+WORLD_COUNTRIES = [
+    "🇻🇳 Việt Nam", "🇺🇸 United States", "🇨🇳 China", "🇯🇵 Japan", "🇰🇷 South Korea",
+    "🇹🇭 Thailand", "🇸🇬 Singapore", "🇲🇾 Malaysia", "🇮🇩 Indonesia", "🇵🇭 Philippines",
+    "🇬🇧 United Kingdom", "🇩🇪 Germany", "🇫🇷 France", "🇮🇹 Italy", "🇪🇸 Spain",
+    "🇨🇦 Canada", "🇦🇺 Australia", "🇳🇿 New Zealand", "🇧🇷 Brazil", "🇲🇽 Mexico",
+    "🇮🇳 India", "🇷🇺 Russia", "🇿🇦 South Africa", "🇪🇬 Egypt", "🇦🇪 UAE",
+    "🇸🇦 Saudi Arabia", "🇹🇷 Turkey", "🇳🇱 Netherlands", "🇸🇪 Sweden", "🇳🇴 Norway",
+    "🇩🇰 Denmark", "🇫🇮 Finland", "🇨🇭 Switzerland", "🇦🇹 Austria", "🇧🇪 Belgium",
+    "🇵🇱 Poland", "🇨🇿 Czech Republic", "🇭🇺 Hungary", "🇬🇷 Greece", "🇵🇹 Portugal",
+    "🇮🇪 Ireland", "🇮🇱 Israel", "🇭🇰 Hong Kong", "🇹🇼 Taiwan", "🇦🇷 Argentina",
+    "🇨🇱 Chile", "🇨🇴 Colombia", "🇵🇪 Peru", "🇻🇪 Venezuela", "🇪🇨 Ecuador",
+    "🇺🇾 Uruguay", "🇧🇴 Bolivia", "🇵🇾 Paraguay", "🇳🇬 Nigeria", "🇰🇪 Kenya",
+    "🇬🇭 Ghana", "🇪🇹 Ethiopia", "🇺🇬 Uganda", "🇹🇿 Tanzania", "🇿🇼 Zimbabwe",
+    "🌏 Southeast Asia", "🌍 Asia-Pacific", "🌎 Global Market"
+]
+
 # Page config
 st.set_page_config(
     page_title="🔬 Market Research AI",
@@ -91,6 +108,13 @@ st.markdown("""
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         text-align: center;
+    }
+    .download-section {
+        background: #e8f5e8;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #28a745;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -173,6 +197,31 @@ def show_home_page():
     
     st.markdown("---")
     
+    # Template Download Section
+    st.markdown("""
+    <div class="download-section">
+        <h4>📁 Download Excel Template</h4>
+        <p>Get our professional market research framework template to start your analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Template download
+    template_path = 'input/market research template.xlsx'
+    if os.path.exists(template_path):
+        with open(template_path, 'rb') as template_file:
+            st.download_button(
+                label="📥 Download Market Research Template",
+                data=template_file.read(),
+                file_name="market_research_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                help="Download the Excel template to create your own research framework"
+            )
+    else:
+        st.error("Template file not found!")
+    
+    st.markdown("---")
+    
     # Recent activity
     col1, col2 = st.columns([2, 1])
     
@@ -214,6 +263,31 @@ def show_research_page():
         st.error("⚠️ Please configure your OpenAI API key in Settings first!")
         return
     
+    # Template download section at the top
+    st.markdown("""
+    <div class="download-section">
+        <h4>📁 Need a Template?</h4>
+        <p>Download our Excel template if you don't have a research framework ready</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    template_path = 'input/market research template.xlsx'
+    if os.path.exists(template_path):
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            with open(template_path, 'rb') as template_file:
+                st.download_button(
+                    label="📥 Download Template",
+                    data=template_file.read(),
+                    file_name="market_research_template.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Download the Excel template to create your own research framework"
+                )
+        with col2:
+            st.info("💡 **Tip:** Download the template, customize it with your questions, then upload it back here!")
+    
+    st.markdown("---")
+    
     # Research form
     with st.form("research_form"):
         st.subheader("📝 Research Configuration")
@@ -228,11 +302,12 @@ def show_research_page():
                 help="Enter the industry or market you want to research"
             )
             
-            # Market selection
+            # Market selection - expanded to world countries
             market = st.selectbox(
                 "🌍 Target Market",
-                ["Việt Nam", "Southeast Asia", "Asia-Pacific"],
-                help="Select your target market"
+                WORLD_COUNTRIES,
+                index=0,  # Default to Vietnam
+                help="Select your target market from countries worldwide"
             )
         
         with col2:
@@ -266,8 +341,11 @@ def show_research_page():
             st.error("Please enter a research topic!")
             return
         
+        # Clean market name (remove emoji and country code)
+        clean_market = market.split(' ', 1)[-1] if ' ' in market else market
+        
         # Run research
-        run_research(research_topic, market, uploaded_file, research_mode == "Quick Test (5 questions)", custom_purpose)
+        run_research(research_topic, clean_market, uploaded_file, research_mode == "Quick Test (5 questions)", custom_purpose)
 
 def run_research(topic, market, uploaded_file, is_test_mode, custom_purpose):
     """Execute the research process"""
