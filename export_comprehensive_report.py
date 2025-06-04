@@ -58,16 +58,19 @@ def create_info_table(doc, data):
     # Tính toán statistics
     stats = calculate_statistics(data)
     
+    # Get metadata from research_metadata (correct location)
+    metadata = data.get('research_metadata', {})
+    
     # Tạo table 2 cột
     table = doc.add_table(rows=0, cols=2)
     table.style = 'Table Grid'
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     
-    # Thêm rows - đã bỏ thông tin về layers, categories, comprehensive reports
+    # Thêm rows - get data from metadata
     info_data = [
-        ('🎯 Ngành nghiên cứu', data.get('industry', 'N/A')),
-        ('🌍 Thị trường', data.get('market', 'N/A')),
-        ('🤖 AI Engine', f"{data.get('api_provider', 'N/A')} - {data.get('model_used', 'N/A')}"),
+        ('🎯 Ngành nghiên cứu', metadata.get('industry', 'N/A')),
+        ('🌍 Thị trường', metadata.get('market', 'N/A')),
+        ('🤖 AI Engine', f"{metadata.get('api_provider', 'N/A')} - {metadata.get('model_used', 'N/A')}"),
         ('📅 Ngày tạo', datetime.now().strftime('%d/%m/%Y %H:%M')),
         ('❓ Tổng số questions', str(stats['total_questions']))
     ]
@@ -169,7 +172,7 @@ def extract_key_insights(data):
     return insights[:8]  # Top 8 insights
 
 def create_references_section(doc, data):
-    """Tạo phần references cho báo cáo"""
+    """Tạo phần references cho báo cáo dựa trên nguồn thực từ research"""
     
     # Page break before references
     doc.add_page_break()
@@ -182,42 +185,40 @@ def create_references_section(doc, data):
     # Add spacing
     doc.add_paragraph()
     
-    # Get research topic and market from data
-    research_results = data.get('research_results', [])
-    topic = data.get('industry', 'Nghiên cứu thị trường')
-    market = data.get('market', 'Việt Nam')
+    # Get research metadata
+    metadata = data.get('research_metadata', {})
+    topic = metadata.get('industry', 'Nghiên cứu thị trường')
+    market = metadata.get('market', 'Việt Nam')
+    model_used = metadata.get('model_used', 'gpt-3.5-turbo')
+    api_provider = metadata.get('api_provider', 'OpenAI')
+    current_year = datetime.now().year
     
-    # Academic and government sources
+    # Start with AI source acknowledgment
     references = [
-        "1. Tổng cục Thống kê Việt Nam. (2024). Niên giám thống kê 2023. Nhà xuất bản Thống kê.",
-        
-        "2. Ngân hàng Thế giới. (2024). Vietnam Development Report 2024. World Bank Publications.",
-        
-        "3. McKinsey & Company. (2024). Vietnam's economy: Growth opportunities and challenges. McKinsey Global Institute.",
-        
-        "4. Vietnam Chamber of Commerce and Industry (VCCI). (2024). Business Environment Index Report.",
-        
-        "5. Asian Development Bank. (2024). Asian Development Outlook 2024: Vietnam Country Report.",
-        
-        "6. Deloitte Vietnam. (2024). Vietnam Business Insights: Market Analysis and Strategic Outlook.",
-        
-        "7. PwC Vietnam. (2024). Doing Business in Vietnam: A comprehensive guide for investors.",
-        
-        "8. Nielsen Vietnam. (2024). Consumer Insights Report: Understanding Vietnamese Market Dynamics.",
-        
-        "9. Euromonitor International. (2024). Country Report: Vietnam - Market Research and Strategic Analysis.",
-        
-        "10. Vietnam Investment Review. (2024). Annual Market Survey and Industry Analysis."
+        f"1. {api_provider} {model_used}. ({current_year}). AI-powered market research analysis for {topic} in {market}. Retrieved from https://openai.com"
     ]
     
-    # Add industry-specific references based on topic
-    industry_refs = get_industry_specific_references(topic)
-    references.extend(industry_refs)
+    # Get tracked references from research data
+    tracked_references = data.get('tracked_references', [])
     
-    # Add market-specific references if not Vietnam
-    if market.lower() != 'việt nam':
-        market_refs = get_market_specific_references(market)
-        references.extend(market_refs)
+    if tracked_references:
+        # Use real tracked references
+        ref_counter = 2
+        for source, frequency in tracked_references[:10]:  # Top 10 most cited
+            # Clean up source name - remove extra text that might be added by tracking
+            clean_source = source.strip()
+            
+            # Create professional reference format
+            references.append(f"{ref_counter}. {clean_source}. ({current_year}). Market research data and analysis. Industry intelligence source.")
+            ref_counter += 1
+    else:
+        # Fallback to generic sources if no tracking data
+        fallback_sources = [
+            f"2. General Statistics Office (GSO). ({current_year}). Economic and social statistics. Retrieved from https://gso.gov.vn",
+            f"3. World Bank. ({current_year}). World Development Indicators. Retrieved from https://data.worldbank.org",
+            f"4. Vietnam Chamber of Commerce and Industry (VCCI). ({current_year}). Business environment reports. Retrieved from https://vcci.com.vn"
+        ]
+        references.extend(fallback_sources)
     
     # Add references to document
     for ref in references:
@@ -233,83 +234,202 @@ def create_references_section(doc, data):
     # Add note about data sources
     doc.add_paragraph()
     note_para = doc.add_paragraph()
-    note_para.add_run("Ghi chú: ").bold = True
-    note_para.add_run("Báo cáo này được tổng hợp từ nhiều nguồn tài liệu uy tín và phân tích bằng công nghệ AI. "
-                     "Các số liệu và thông tin được cập nhật đến thời điểm lập báo cáo. "
-                     "Người đọc nên tham khảo thêm các nguồn chính thức để có thông tin mới nhất.")
+    note_para.add_run("Ghi chú về nguồn dữ liệu: ").bold = True
+    note_para.add_run(f"Báo cáo này được tạo bằng AI ({api_provider} {model_used}) để phân tích và tổng hợp thông tin về thị trường {topic} tại {market}. "
+                     f"AI được sử dụng để thu thập, phân tích và trình bày thông tin từ các nguồn công khai. "
+                     f"Các nguồn tham khảo được trích xuất tự động từ quá trình phân tích và được sắp xếp theo tần suất sử dụng. "
+                     f"Các thông tin và số liệu trong báo cáo phản ánh kiến thức và dữ liệu có sẵn của mô hình AI tại thời điểm tạo báo cáo ({datetime.now().strftime('%m/%Y')}). "
+                     f"Người đọc nên xác minh thông tin với các nguồn chính thức và cập nhật để có dữ liệu mới nhất.")
     note_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     set_paragraph_font(note_para, font_size=9)
     note_para.runs[0].italic = True
     note_para.runs[1].italic = True
 
-def get_industry_specific_references(topic):
-    """Lấy tài liệu tham khảo theo ngành"""
+def extract_sources_from_research(research_results):
+    """Trích xuất các nguồn được đề cập trong nội dung research"""
+    sources = set()
+    
+    # Common organizations and sources that might be mentioned in AI responses
+    source_patterns = [
+        # Vietnamese official sources
+        r'Tổng cục Thống kê(?:\s+Việt\s+Nam)?',
+        r'Bộ (?:Kế hoạch|Tài chính|Công Thương|Y tế|Giáo dục)',
+        r'VCCI|Vietnam Chamber of Commerce',
+        r'FPT|Viettel|VNPT',
+        r'Ngân hàng Nhà nước',
+        
+        # International sources
+        r'World Bank|Ngân hàng Thế giới',
+        r'IMF|International Monetary Fund',
+        r'ADB|Asian Development Bank',
+        r'McKinsey|Deloitte|PwC|KPMG',
+        r'Nielsen|Euromonitor',
+        r'Statista',
+        
+        # Industry-specific
+        r'VAMA|Vietnam Automobile',
+        r'VINASA|Vietnam Software',
+        r'VFA|Vietnam Food Association'
+    ]
+    
+    # Search through all research content
+    for layer in research_results:
+        for category in layer.get('categories', []):
+            for question in category.get('questions', []):
+                # Check Layer 3 content
+                content = question.get('layer3_content', '')
+                if content:
+                    for pattern in source_patterns:
+                        matches = re.findall(pattern, content, re.IGNORECASE)
+                        for match in matches:
+                            sources.add(f"{match} - referenced in AI analysis")
+                
+                # Check Layer 4 comprehensive content
+                if question.get('layer4_comprehensive_report'):
+                    comp_content = question['layer4_comprehensive_report'].get('comprehensive_content', '')
+                    if comp_content:
+                        for pattern in source_patterns:
+                            matches = re.findall(pattern, comp_content, re.IGNORECASE)
+                            for match in matches:
+                                sources.add(f"{match} - referenced in AI analysis")
+    
+    return list(sources)[:7]  # Return max 7 sources
+
+def get_credible_industry_sources(topic, market):
+    """Lấy nguồn uy tín theo ngành và thị trường"""
     topic_lower = topic.lower()
+    sources = []
+    current_year = datetime.now().year
+    
+    # Always include these for Vietnam market
+    if 'việt nam' in market.lower() or 'vietnam' in market.lower():
+        sources.extend([
+            f"Vietnam Economic Times. ({current_year}). Industry Analysis Reports. Retrieved from https://vneconomictimes.com",
+            f"Vietnam Investment Review. ({current_year}). Market Intelligence Reports. Retrieved from https://vir.com.vn"
+        ])
     
     # Technology/Digital
-    if any(keyword in topic_lower for keyword in ['công nghệ', 'technology', 'digital', 'ai', 'tech']):
-        return [
-            "11. Vietnam Software and IT Services Association (VINASA). (2024). Vietnam IT Industry Report.",
-            "12. FPT Technology Research Institute. (2024). Digital Transformation in Vietnam.",
-            "13. Vietnam National University. (2024). Technology Innovation and Development Studies."
-        ]
+    if any(keyword in topic_lower for keyword in ['technology', 'digital', 'ai', 'tech', 'công nghệ']):
+        sources.extend([
+            f"Vietnam ICT Statistics. ({current_year}). Ministry of Information and Communications. Retrieved from https://mic.gov.vn",
+            f"VINASA Technology Reports. ({current_year}). Vietnam Software Association. Retrieved from https://vinasa.org.vn"
+        ])
     
-    # Automotive/Electric Vehicles
-    elif any(keyword in topic_lower for keyword in ['ô tô', 'xe', 'automotive', 'vehicle', 'electric']):
-        return [
-            "11. Vietnam Automobile Manufacturers Association (VAMA). (2024). Vietnam Automotive Industry Report.",
-            "12. Ministry of Transport Vietnam. (2024). Transport Development Strategy 2021-2030.",
-            "13. Vietnam Electric Vehicle Association. (2024). EV Market Development and Policy Framework."
-        ]
+    # Automotive
+    elif any(keyword in topic_lower for keyword in ['automotive', 'vehicle', 'ô tô', 'xe']):
+        sources.extend([
+            f"VAMA Industry Statistics. ({current_year}). Vietnam Automobile Manufacturers Association. Retrieved from https://vama.org.vn",
+            f"Vietnam Ministry of Transport. ({current_year}). Transport Statistics. Retrieved from https://mt.gov.vn"
+        ])
     
-    # Food & Beverage
-    elif any(keyword in topic_lower for keyword in ['thực phẩm', 'food', 'beverage', 'đồ uống']):
-        return [
-            "11. Vietnam Food Association (VFA). (2024). Vietnam Food Industry Development Report.",
-            "12. Ministry of Agriculture and Rural Development. (2024). Agricultural Product Export Statistics.",
-            "13. Vietnam National Nutrition Institute. (2024). Food Safety and Quality Standards."
-        ]
-    
-    # Real Estate
-    elif any(keyword in topic_lower for keyword in ['bất động sản', 'real estate', 'property']):
-        return [
-            "11. Vietnam Association of Realtors (VARS). (2024). Vietnam Real Estate Market Report.",
-            "12. Ministry of Construction. (2024). Housing Development Strategy 2021-2030.",
-            "13. CBRE Vietnam. (2024). Vietnam Real Estate Market Outlook."
-        ]
-    
-    # Finance/Banking
-    elif any(keyword in topic_lower for keyword in ['tài chính', 'ngân hàng', 'finance', 'banking']):
-        return [
-            "11. State Bank of Vietnam. (2024). Monetary Policy and Banking Sector Report.",
-            "12. Vietnam Banks Association. (2024). Banking Industry Development Report.",
-            "13. International Finance Corporation. (2024). Vietnam Financial Sector Development."
-        ]
-    
-    # Default general business references
+    # Default business sources
     else:
-        return [
-            "11. Vietnam Institute for Economic and Policy Research (VEPR). (2024). Vietnam Economic Report.",
-            "12. Ho Chi Minh City Institute for Development Studies. (2024). Business Environment Analysis.",
-            "13. Foreign Investment Agency. (2024). FDI and Market Entry Guidelines."
-        ]
+        sources.extend([
+            f"Vietnam Business Portal. ({current_year}). Ministry of Planning and Investment. Retrieved from https://business.gov.vn",
+            f"VCCI Business Reports. ({current_year}). Vietnam Chamber of Commerce. Retrieved from https://vcci.com.vn"
+        ])
+    
+    return sources[:3]  # Return max 3 additional sources
 
-def get_market_specific_references(market):
-    """Lấy tài liệu tham khảo theo thị trường"""
-    market_lower = market.lower()
-    
-    if 'southeast asia' in market_lower or 'asean' in market_lower:
-        return [
-            "14. ASEAN Secretariat. (2024). ASEAN Economic Integration Report.",
-            "15. Asian Development Bank. (2024). Southeast Asia Development Outlook."
-        ]
-    elif 'asia-pacific' in market_lower or 'asia pacific' in market_lower:
-        return [
-            "14. Asia-Pacific Economic Cooperation (APEC). (2024). Regional Economic Outlook.",
-            "15. International Monetary Fund. (2024). Asia and Pacific Regional Economic Outlook."
-        ]
-    else:
-        return []
+def generate_ai_executive_summary(data):
+    """Generate executive summary using AI based on all research questions and findings"""
+    try:
+        # Import here to avoid circular import
+        from openai_market_research import OpenAIMarketResearch
+        
+        # Get API key from data or environment
+        api_key = data.get('api_key') or os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            return None
+        
+        # Initialize AI client
+        researcher = OpenAIMarketResearch(
+            api_key=api_key,
+            industry=data.get('industry', 'Unknown'),
+            market=data.get('market', 'Vietnam')
+        )
+        
+        # Collect all main questions from research
+        all_questions = []
+        research_summary = ""
+        
+        for layer in data.get('research_results', []):
+            layer_name = layer.get('layer_name', '')
+            for category in layer.get('categories', []):
+                category_name = category.get('category_name', '')
+                for question in category.get('questions', []):
+                    main_question = question.get('main_question', '')
+                    if main_question:
+                        all_questions.append(f"• {main_question}")
+                        
+                        # Get key insights from Layer 4 or Layer 3
+                        layer4_report = question.get('layer4_comprehensive_report', {})
+                        if layer4_report:
+                            content = layer4_report.get('comprehensive_content', '')
+                            # Extract first 2 sentences as key insight
+                            sentences = content.split('.')[:2]
+                            if sentences:
+                                key_insight = '. '.join(sentences).strip()
+                                if len(key_insight) > 50:
+                                    research_summary += f"\n- {layer_name}/{category_name}: {key_insight[:200]}..."
+                        elif question.get('layer3_content'):
+                            content = question.get('layer3_content', '')
+                            sentences = content.split('.')[:1]
+                            if sentences:
+                                key_insight = sentences[0].strip()
+                                if len(key_insight) > 50:
+                                    research_summary += f"\n- {layer_name}/{category_name}: {key_insight[:150]}..."
+        
+        questions_text = "\n".join(all_questions)
+        
+        # Create AI prompt for executive summary
+        prompt = f"""Bạn là chuyên gia tư vấn chiến lược, viết tóm tắt điều hành (Executive Summary) cho báo cáo nghiên cứu thị trường.
+
+THÔNG TIN NGHIÊN CỨU:
+- Ngành: {data.get('industry', 'N/A')}
+- Thị trường: {data.get('market', 'N/A')}
+- Mục đích: {data.get('purpose', 'Phân tích thị trường và cơ hội kinh doanh')}
+
+CÁC CÂU HỎI NGHIÊN CỨU ĐÃ ĐƯỢC PHÂN TÍCH:
+{questions_text}
+
+KEY INSIGHTS TỪ NGHIÊN CỨU:
+{research_summary}
+
+VIẾT TÓM TẮT ĐIỀU HÀNH theo 5 phần:
+
+**1. 🎯 MỤC TIÊU/MỤC ĐÍCH (80-100 từ)**
+Tóm tắt mục tiêu nghiên cứu và tại sao quan trọng
+
+**2. 🌍 PHẠM VI/BỐI CẢNH (80-100 từ)**  
+Phạm vi nghiên cứu, thị trường, phương pháp
+
+**3. 🔍 PHÁT HIỆN CHÍNH (120-150 từ)**
+3-4 insight quan trọng nhất từ nghiên cứu
+
+**4. 🚀 ĐỀ XUẤT HÀNH ĐỘNG (120-150 từ)**
+5-6 khuyến nghị cụ thể dựa trên findings
+
+**5. 📈 TÁC ĐỘNG KỲ VỌNG (100-120 từ)**
+Lợi ích và impact khi áp dụng các đề xuất
+
+**YÊU CẦU:**
+- Viết chuyên nghiệp, ngắn gọn, actionable
+- Dựa trên insights thực từ nghiên cứu
+- Tránh chung chung, focus vào specific findings
+- Kết thúc mỗi phần bằng dấu chấm
+- Format: Mỗi phần là một đoạn văn liền mạch
+
+**CHỈ TRẢ VỀ NỘI DUNG 5 PHẦN, KHÔNG CÓ GIẢI THÍCH HAY INTRO**"""
+
+        # Get AI-generated summary
+        ai_summary = researcher.call_openai_api(prompt)
+        
+        return ai_summary
+        
+    except Exception as e:
+        print(f"❌ Error generating AI executive summary: {e}")
+        return None
 
 def create_executive_summary(doc, data):
     """Tạo Executive Summary theo template 5 phần"""
@@ -379,13 +499,22 @@ def create_executive_summary(doc, data):
     set_paragraph_font(section4_heading, font_size=14)
     
     action_para = doc.add_paragraph()
-    action_para.add_run("Chúng tôi đề xuất doanh nghiệp nên:")
-    action_para.add_run(f"""
-• Tập trung phát triển các sản phẩm/dịch vụ phù hợp với xu hướng thị trường hiện tại
-• Xây dựng chiến lược tiếp thị và bán hàng dựa trên insights từ nghiên cứu
-• Đầu tư vào công nghệ và đổi mới để nâng cao năng lực cạnh tranh
-• Tăng cường hợp tác với các đối tác chiến lược trong ngành
-• Xây dựng hệ thống theo dõi và đánh giá thường xuyên để ứng phó với thay đổi thị trường""")
+    action_para.add_run("Dựa trên kết quả nghiên cứu, chúng tôi đề xuất:")
+    
+    # Generate dynamic recommendations based on research content
+    recommendations = generate_recommendations_from_research(data)
+    
+    if recommendations:
+        for rec in recommendations[:5]:  # Top 5 recommendations
+            action_para.add_run(f"\n• {rec}")
+    else:
+        # Fallback to generic recommendations
+        action_para.add_run(f"""
+• Phát triển chiến lược phù hợp với xu hướng thị trường đã xác định trong nghiên cứu
+• Tập trung vào các cơ hội được nhận diện qua phân tích môi trường kinh doanh
+• Đối phó với những thách thức chính được chỉ ra trong báo cáo
+• Xây dựng năng lực cạnh tranh dựa trên insights từ phân tích ngành
+• Thiết lập hệ thống giám sát để theo dõi sự thay đổi của các yếu tố được nghiên cứu""")
     
     action_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     set_paragraph_font(action_para)
@@ -395,7 +524,20 @@ def create_executive_summary(doc, data):
     set_paragraph_font(section5_heading, font_size=14)
     
     impact_para = doc.add_paragraph()
-    impact_para.add_run(f"Điều này sẽ dẫn đến việc nâng cao vị thế cạnh tranh của doanh nghiệp trong ngành {data.get('industry', 'N/A')}, tăng cường khả năng thích ứng với thay đổi thị trường, và tối ưu hóa hiệu quả kinh doanh. Dự kiến sẽ cải thiện đáng kể khả năng ra quyết định chiến lược và tạo ra lợi thế cạnh tranh bền vững trong môi trường kinh doanh năng động.")
+    
+    # Generate dynamic impact based on research insights
+    impact_insights = extract_impact_insights(data)
+    
+    if impact_insights:
+        impact_para.add_run("Việc thực hiện các đề xuất trên dự kiến sẽ mang lại:")
+        for impact in impact_insights[:3]:  # Top 3 impacts
+            impact_para.add_run(f"\n• {impact}")
+        
+        impact_para.add_run(f"\n\nTổng thể, điều này sẽ giúp doanh nghiệp nâng cao khả năng cạnh tranh trong ngành {data.get('industry', 'N/A')} và thích ứng tốt hơn với môi trường kinh doanh năng động tại {data.get('market', 'thị trường')}.")
+    else:
+        # Fallback to more generic but still dynamic text
+        impact_para.add_run(f"Việc áp dụng các insights từ nghiên cứu này sẽ giúp doanh nghiệp nâng cao vị thế cạnh tranh trong ngành {data.get('industry', 'N/A')}, tăng cường khả năng thích ứng với thay đổi thị trường tại {data.get('market', 'thị trường')}, và tối ưu hóa hiệu quả kinh doanh. Dự kiến sẽ cải thiện đáng kể khả năng ra quyết định chiến lược và tạo ra lợi thế cạnh tranh bền vững.")
+    
     impact_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     set_paragraph_font(impact_para)
     
@@ -450,6 +592,93 @@ def extract_key_insights_for_summary(data):
     
     return insights[:6]  # Top 6 insights for summary
 
+def generate_recommendations_from_research(data):
+    """Generate dynamic recommendations based on research content"""
+    recommendations = []
+    
+    for layer in data.get('research_results', []):
+        layer_name = layer.get('layer_name', '')
+        
+        for category in layer.get('categories', []):
+            category_name = category.get('category_name', '')
+            
+            for question in category.get('questions', []):
+                # Lấy từ comprehensive report trước
+                layer4_comprehensive = question.get('layer4_comprehensive_report', {})
+                if layer4_comprehensive:
+                    content = layer4_comprehensive.get('comprehensive_content', '')
+                    if content:
+                        # Extract actionable recommendations
+                        sentences = content.split('.')
+                        for sentence in sentences:
+                            # Look for actionable insights and recommendations
+                            if any(keyword in sentence.lower() for keyword in [
+                                'nên', 'cần', 'khuyến nghị', 'đề xuất', 'tăng cường', 
+                                'phát triển', 'đầu tư', 'tập trung', 'xây dựng', 'thúc đẩy'
+                            ]):
+                                rec = sentence.strip()
+                                if len(rec) > 30 and rec not in recommendations:  # Avoid duplicates
+                                    recommendations.append(rec[:200] + "..." if len(rec) > 200 else rec)
+                                    if len(recommendations) >= 8:  # Enough recommendations
+                                        break
+                
+                # Fallback to layer 3 content
+                elif question.get('layer3_content'):
+                    content = question.get('layer3_content', '')
+                    sentences = content.split('.')
+                    for sentence in sentences:
+                        if any(keyword in sentence.lower() for keyword in [
+                            'nên', 'cần', 'quan trọng', 'chính', 'ưu tiên'
+                        ]):
+                            rec = sentence.strip()
+                            if len(rec) > 30 and rec not in recommendations:
+                                recommendations.append(rec[:150] + "..." if len(rec) > 150 else rec)
+                                if len(recommendations) >= 8:
+                                    break
+    
+    return recommendations[:6]  # Top 6 actionable recommendations
+
+def extract_impact_insights(data):
+    """Extract expected impact insights from research content"""
+    impacts = []
+    
+    for layer in data.get('research_results', []):
+        for category in layer.get('categories', []):
+            for question in category.get('questions', []):
+                # Check comprehensive reports first
+                layer4_comprehensive = question.get('layer4_comprehensive_report', {})
+                if layer4_comprehensive:
+                    content = layer4_comprehensive.get('comprehensive_content', '')
+                    if content:
+                        sentences = content.split('.')
+                        for sentence in sentences:
+                            # Look for impact-related statements
+                            if any(keyword in sentence.lower() for keyword in [
+                                'tác động', 'ảnh hưởng', 'hiệu quả', 'kết quả', 'lợi ích',
+                                'cải thiện', 'tăng trưởng', 'giảm thiểu', 'tối ưu', 'nâng cao'
+                            ]):
+                                impact = sentence.strip()
+                                if len(impact) > 40 and impact not in impacts:
+                                    impacts.append(impact[:180] + "..." if len(impact) > 180 else impact)
+                                    if len(impacts) >= 5:
+                                        break
+                
+                # Fallback to layer 3
+                elif question.get('layer3_content'):
+                    content = question.get('layer3_content', '')
+                    sentences = content.split('.')
+                    for sentence in sentences:
+                        if any(keyword in sentence.lower() for keyword in [
+                            'lợi ích', 'hiệu quả', 'cải thiện', 'tăng', 'giảm'
+                        ]):
+                            impact = sentence.strip()
+                            if len(impact) > 40 and impact not in impacts:
+                                impacts.append(impact[:150] + "..." if len(impact) > 150 else impact)
+                                if len(impacts) >= 5:
+                                    break
+    
+    return impacts[:4]  # Top 4 impact insights
+
 def clean_comprehensive_content(content):
     """Remove numbering, section headers, and intro sentences from comprehensive content"""
     if not content:
@@ -488,24 +717,45 @@ def clean_comprehensive_content(content):
     
     return cleaned_content
 
-def create_comprehensive_word_report(json_file, output_file=None):
+def create_comprehensive_word_report(json_file: str, output_file: str = None, use_vietnamese_filename: bool = True) -> str:
     """
-    Export layered research results to Word document
-    Hỗ trợ comprehensive Layer 4 reports with enhanced formatting
+    Tạo báo cáo Word toàn diện từ kết quả nghiên cứu JSON
+    
+    Args:
+        json_file: Đường dẫn file JSON
+        output_file: Đường dẫn file output (optional)
+        use_vietnamese_filename: Sử dụng tên file tiếng Việt thân thiện hay technical name
     """
     
-    if not os.path.exists(json_file):
-        print(f"❌ Không tìm thấy file: {json_file}")
-        return None
-    
-    # Load data
+    print("📄 Tạo trang bìa...")
+    # Đọc dữ liệu
     with open(json_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
-    # Tạo output filename nếu chưa có
-    if output_file is None:
-        base_name = os.path.splitext(json_file)[0]
-        output_file = f"{base_name}_comprehensive_report.docx"
+    if not output_file:
+        # Extract base info for filename
+        base_name = os.path.basename(json_file).replace('layer3_research_', '').replace('.json', '')
+        
+        if use_vietnamese_filename:
+            # Tạo tên file tiếng Việt thân thiện
+            metadata = data.get('research_metadata', {})
+            industry = metadata.get('industry', 'Unknown')
+            market = metadata.get('market', 'Vietnam')
+            timestamp = metadata.get('research_timestamp', '').replace(':', '').replace(' ', '_').replace('-', '')
+            
+            # Clean industry name for filename
+            industry_clean = re.sub(r'[^\w\s-]', '', industry)
+            industry_clean = re.sub(r'\s+', '_', industry_clean)
+            
+            # Create friendly Vietnamese filename
+            output_file = f"Báo_cáo_nghiên_cứu_thị_trường_{industry_clean}_{timestamp[:8]}.docx"
+        else:
+            # Use technical naming convention
+            output_file = f"{base_name}_comprehensive_report.docx"
+        
+        # Ensure output directory
+        output_dir = os.path.dirname(json_file) if '/' in json_file else 'output'
+        output_file = os.path.join(output_dir, output_file)
     
     # Create document
     doc = Document()
@@ -645,7 +895,37 @@ def create_comprehensive_word_report(json_file, output_file=None):
     create_references_section(doc, data)
     
     # ===== EXECUTIVE SUMMARY =====
-    create_executive_summary(doc, data)
+    print("📋 Generating AI-powered Executive Summary...")
+    
+    # Try AI-generated summary first
+    ai_summary = generate_ai_executive_summary(data)
+    
+    if ai_summary:
+        # Add page break before executive summary
+        doc.add_page_break()
+        
+        # Executive Summary Header
+        exec_heading = doc.add_heading('📋 TÓM TẮT ĐIỀU HÀNH (EXECUTIVE SUMMARY)', level=1)
+        exec_heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        set_paragraph_font(exec_heading, font_size=18)
+        
+        # Add AI-generated content
+        ai_summary_para = doc.add_paragraph(ai_summary)
+        ai_summary_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        set_paragraph_font(ai_summary_para)
+        
+        # Footer info
+        doc.add_paragraph()
+        footer_para = doc.add_paragraph()
+        footer_para.add_run('📅 Báo cáo được tạo tự động bởi Market Research Automation System').italic = True
+        footer_para.add_run(f'\n⏰ Ngày tạo: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        footer_para.add_run(f'\n🤖 Executive Summary generated by AI based on research findings')
+        footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        set_paragraph_font(footer_para, font_size=9)
+    else:
+        # Fallback to original executive summary
+        print("⚠️ AI summary failed, using fallback...")
+        create_executive_summary(doc, data)
     
     # Save document
     print(f"💾 Lưu file: {output_file}")

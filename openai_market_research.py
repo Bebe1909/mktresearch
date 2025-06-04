@@ -10,9 +10,10 @@ import json
 import requests
 import time
 from typing import Dict, List, Any
+import openai
 
 class OpenAIMarketResearch:
-    def __init__(self, api_key: str, industry: str, market: str, model: str = "gpt-3.5-turbo"):
+    def __init__(self, api_key: str, industry: str = "Technology", market: str = "Việt Nam", model: str = "gpt-3.5-turbo"):
         """
         Khởi tạo class nghiên cứu thị trường với OpenAI GPT
         
@@ -22,48 +23,50 @@ class OpenAIMarketResearch:
             market (str): Thị trường nghiên cứu
             model (str): Model GPT sử dụng
         """
-        self.api_key = api_key
+        self.client = openai.OpenAI(api_key=api_key)
         self.industry = industry
         self.market = market
         self.model = model
         self.base_url = "https://api.openai.com/v1/chat/completions"
         self.delay_seconds = 3  # Increased delay from 1 to 3 seconds
         
-    def call_openai_api(self, prompt: str, max_retries: int = 3) -> str:
-        """Gửi request tới OpenAI API với retry logic"""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"
-        }
+        # Reference tracking system
+        self.reference_tracker = {}
+        self.tracked_sources = set()
         
-        data = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "max_tokens": 2000,
-            "temperature": 0.7
-        }
+        print(f"🤖 Initialized OpenAI Market Research for {industry} in {market}")
+        print(f"📊 API Provider: OpenAI")
+        print(f"🔧 Model: {model}")
+        
+    def call_openai_api(self, prompt: str, max_retries: int = 3) -> str:
+        """Gửi request tới OpenAI API với retry logic và track references"""
         
         for attempt in range(max_retries):
             try:
-                response = requests.post(self.base_url, headers=headers, json=data)
-                response.raise_for_status()
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": prompt
+                        }
+                    ],
+                    max_tokens=2000,
+                    temperature=0.7
+                )
                 
-                result = response.json()
-                if 'choices' in result and len(result['choices']) > 0:
-                    if 'message' in result['choices'][0] and 'content' in result['choices'][0]['message']:
-                        return result['choices'][0]['message']['content']
-                    else:
-                        return "Không có nội dung trong phản hồi API"
-                else:
-                    return "Không có phản hồi từ API"
+                if response.choices and response.choices[0].message:
+                    content = response.choices[0].message.content
                     
-            except requests.exceptions.RequestException as e:
-                if "429" in str(e):  # Rate limit error
+                    # Track references from the response
+                    self.track_references_from_response(content)
+                    
+                    return content
+                else:
+                    return "Không có nội dung trong phản hồi API"
+                    
+            except Exception as e:
+                if "429" in str(e) or "rate_limit" in str(e).lower():  # Rate limit error
                     wait_time = (2 ** attempt) * 5  # Exponential backoff: 5, 10, 20 seconds
                     print(f"⚠️ Rate limit hit - Waiting {wait_time}s before retry {attempt + 1}/{max_retries}")
                     time.sleep(wait_time)
@@ -75,6 +78,91 @@ class OpenAIMarketResearch:
                     return f"API Error: {e}"
         
         return "Failed after all retries"
+    
+    def track_references_from_response(self, content: str):
+        """Extract and track references from AI response"""
+        import re
+        
+        # Patterns to detect references and sources in AI responses
+        reference_patterns = [
+            # Organizations and institutions
+            r'\b(?:Tổng cục Thống kê|General Statistics Office|GSO)\b',
+            r'\b(?:Ngân hàng Thế giới|World Bank)\b',
+            r'\b(?:IMF|International Monetary Fund)\b',
+            r'\b(?:ADB|Asian Development Bank)\b',
+            r'\b(?:McKinsey|Deloitte|PwC|KPMG|BCG)\b',
+            r'\b(?:Nielsen|Euromonitor|Statista)\b',
+            r'\b(?:VCCI|Vietnam Chamber of Commerce)\b',
+            r'\b(?:Bộ (?:Kế hoạch|Tài chính|Công Thương|Y tế|Giáo dục))\b',
+            
+            # Vietnam specific
+            r'\b(?:VAMA|Vietnam Automobile)\b',
+            r'\b(?:VINASA|Vietnam Software)\b',
+            r'\b(?:VFA|Vietnam Food Association)\b',
+            r'\b(?:FPT|Viettel|VNPT)\b',
+            r'\b(?:Ngân hàng Nhà nước|State Bank of Vietnam)\b',
+            
+            # Global sources
+            r'\b(?:Bloomberg|Reuters|Financial Times)\b',
+            r'\b(?:Forbes|Harvard Business Review|MIT)\b',
+            r'\b(?:Gartner|IDC|Forrester)\b',
+            
+            # Government and regulatory
+            r'\b(?:Ministry of|Bộ)\s+[A-Za-zÀ-ỹ\s]+\b',
+            r'\b(?:Government of|Chính phủ)\s+[A-Za-zÀ-ỹ\s]+\b',
+        ]
+        
+        # Extract references
+        for pattern in reference_patterns:
+            matches = re.finditer(pattern, content, re.IGNORECASE)
+            for match in matches:
+                source = match.group().strip()
+                if source and len(source) > 3:  # Avoid very short matches
+                    # Normalize source name
+                    normalized_source = self.normalize_source_name(source)
+                    
+                    # Track frequency
+                    if normalized_source in self.reference_tracker:
+                        self.reference_tracker[normalized_source] += 1
+                    else:
+                        self.reference_tracker[normalized_source] = 1
+                    
+                    self.tracked_sources.add(normalized_source)
+    
+    def normalize_source_name(self, source: str) -> str:
+        """Normalize source names for consistent tracking"""
+        source = source.strip()
+        
+        # Mapping for common variations
+        mappings = {
+            'Tổng cục Thống kê': 'General Statistics Office (GSO)',
+            'General Statistics Office': 'General Statistics Office (GSO)',
+            'GSO': 'General Statistics Office (GSO)',
+            'Ngân hàng Thế giới': 'World Bank',
+            'World Bank': 'World Bank',
+            'IMF': 'International Monetary Fund (IMF)',
+            'International Monetary Fund': 'International Monetary Fund (IMF)',
+            'McKinsey': 'McKinsey & Company',
+            'Deloitte': 'Deloitte Consulting',
+            'PwC': 'PricewaterhouseCoopers (PwC)',
+            'KPMG': 'KPMG International',
+            'Nielsen': 'Nielsen Holdings',
+            'Euromonitor': 'Euromonitor International',
+            'Statista': 'Statista GmbH',
+            'VCCI': 'Vietnam Chamber of Commerce and Industry (VCCI)',
+            'Vietnam Chamber of Commerce': 'Vietnam Chamber of Commerce and Industry (VCCI)',
+        }
+        
+        return mappings.get(source, source)
+    
+    def get_top_references(self, limit: int = 10) -> list:
+        """Get top references sorted by frequency"""
+        sorted_refs = sorted(
+            self.reference_tracker.items(), 
+            key=lambda x: x[1], 
+            reverse=True
+        )
+        return sorted_refs[:limit]
 
     def create_layer3_prompt_request(self, layer1: str, layer2: str, main_question: str, purpose: str) -> str:
         """Tạo request để lấy prompt Layer 3 (main question level) - DIRECT ANSWER FOCUSED"""
@@ -463,44 +551,156 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         return output_file
 
     def run_layer3_research(self, structured_data: dict, topic: str, testing_mode: bool = False) -> dict:
-        """
-        Chạy nghiên cứu Layer 3 với topic cụ thể
+        """Main research execution with comprehensive error handling and reference tracking"""
         
-        Args:
-            structured_data (dict): Dữ liệu cấu trúc từ JSON
-            topic (str): Chủ đề nghiên cứu
-            testing_mode (bool): Chế độ testing (5 câu hỏi)
+        print(f"🎯 Bắt đầu nghiên cứu thị trường Layer 3: {topic}")
+        print(f"📊 Thị trường: {self.market}")
+        print(f"🤖 API: OpenAI {self.model}")
+        
+        # Reset reference tracking for new research
+        self.reference_tracker = {}
+        self.tracked_sources = set()
+        
+        # Get purpose from structured data
+        purpose = structured_data.get('purpose', 'Nghiên cứu thị trường và phân tích cơ hội kinh doanh')
+        
+        # Create result structure
+        result = {
+            'research_metadata': {
+                'industry': topic,
+                'market': self.market,
+                'model_used': self.model,
+                'api_provider': 'OpenAI',
+                'purpose': purpose,
+                'research_timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+                'testing_mode': testing_mode
+            },
+            'research_results': [],
+            'research_statistics': {},
+            'tracked_references': []  # Will be populated at the end
+        }
+        
+        # Count total questions for progress tracking
+        total_questions = 0
+        for layer in structured_data.get('layers', []):
+            for category in layer.get('categories', []):
+                questions = category.get('questions', [])
+                if testing_mode:
+                    total_questions += min(len(questions), 2)  # Limit to 2 per category in test mode
+                else:
+                    total_questions += len(questions)
+        
+        print(f"❓ Tổng số main questions (Layer 3): {total_questions}")
+        print("=" * 60)
+        
+        processed_questions = 0
+        
+        for layer in structured_data.get('layers', []):
+            layer_name = layer.get('name', '')
+            layer_result = {
+                'layer_name': layer_name,
+                'categories': []
+            }
             
-        Returns:
-            dict: Kết quả nghiên cứu
-        """
-        
-        # Set industry from topic, but keep the market that was passed to __init__
-        self.industry = topic
-        
-        # Set limit based on testing mode
-        limit = 5 if testing_mode else None
-        
-        # Create temporary JSON file
-        import tempfile
-        import os
-        
-        temp_file = os.path.join('output', 'temp_structured_data.json')
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            json.dump(structured_data, f, ensure_ascii=False, indent=2)
-        
-        try:
-            # Process research
-            result = self.process_layer3_research(temp_file, limit)
+            print(f"🔥 Đang xử lý Layer: {layer_name}")
             
-            # Clean up temp file
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+            for category in layer.get('categories', []):
+                category_name = category.get('name', '')
+                category_result = {
+                    'category_name': category_name,
+                    'questions': []
+                }
                 
-            return result
-            
-        except Exception as e:
-            # Clean up temp file on error
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
-            raise e 
+                print(f"📋 Category: {category_name}")
+                
+                questions = category.get('questions', [])
+                if testing_mode:
+                    questions = questions[:2]  # Limit to 2 questions per category
+                
+                for question_data in questions:
+                    processed_questions += 1
+                    progress_percent = (processed_questions / total_questions) * 100
+                    
+                    main_question = question_data.get('main_question', '')
+                    sub_questions = question_data.get('sub_questions', [])
+                    
+                    print(f"  ❓ [{processed_questions}/{total_questions}] ({progress_percent:.1f}%) Processing: {main_question[:50]}...")
+                    
+                    # Create Layer 3 analysis
+                    print("    🔄 Tạo Layer 3 prompt...")
+                    layer3_prompt = self.create_layer3_prompt_request(
+                        layer_name, category_name, main_question, purpose
+                    )
+                    
+                    print("    🔍 Nghiên cứu Layer 3...")
+                    layer3_content = self.call_openai_api(layer3_prompt)
+                    
+                    # Create question result
+                    question_result = {
+                        'main_question': main_question,
+                        'sub_questions': sub_questions,
+                        'layer3_content': layer3_content
+                    }
+                    
+                    # Auto Layer 4 comprehensive if has sub-questions
+                    if sub_questions and len(sub_questions) > 0:
+                        print(f"🔄 Tạo báo cáo Layer 4 tổng hợp với {len(sub_questions)} sub-questions...")
+                        
+                        # Create temporary structure with current question data for Layer 4 enhancement
+                        temp_structure = {
+                            'research_results': [{
+                                'layer_name': layer_name,
+                                'categories': [{
+                                    'category_name': category_name,
+                                    'questions': [question_result]  # Include current question with layer3_content
+                                }]
+                            }],
+                            'purpose': purpose
+                        }
+                        
+                        comprehensive_content = self.enhance_to_layer4_comprehensive(
+                            temp_structure, 
+                            layer_name, 
+                            category_name, 
+                            main_question
+                        )
+                        
+                        question_result['layer4_comprehensive_report'] = {
+                            "comprehensive_content": comprehensive_content,
+                            "enhancement_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "sub_questions_integrated": sub_questions
+                        }
+                    
+                    category_result['questions'].append(question_result)
+                    print("    ✅ Hoàn thành Layer 3!")
+                    
+                    # Add delay to avoid rate limiting
+                    time.sleep(self.delay_seconds)
+                
+                layer_result['categories'].append(category_result)
+                
+            result['research_results'].append(layer_result)
+        
+        print("=" * 60)
+        print("🎉 Hoàn thành nghiên cứu thị trường Layer 3!")
+        print(f"📊 Đã xử lý: {processed_questions} main questions")
+        
+        # Add tracked references to result
+        top_references = self.get_top_references(10)
+        result['tracked_references'] = top_references
+        
+        print(f"📚 Tracked {len(self.tracked_sources)} unique sources")
+        if top_references:
+            print("🔝 Top references:")
+            for source, count in top_references[:5]:
+                print(f"   • {source} ({count}x)")
+        
+        # Add research statistics
+        result['research_statistics'] = {
+            'total_questions_processed': processed_questions,
+            'total_sources_tracked': len(self.tracked_sources),
+            'total_api_calls': processed_questions * 2,  # Estimate including Layer 4
+            'processing_time_estimate': f"{processed_questions * self.delay_seconds / 60:.1f} minutes"
+        }
+        
+        return result 

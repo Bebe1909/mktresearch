@@ -14,6 +14,7 @@ from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
+import re
 
 # Get OpenAI API key from multiple sources (deployment-friendly)
 def get_openai_api_key():
@@ -134,8 +135,8 @@ def main():
     with st.sidebar:
         selected = option_menu(
             menu_title="Navigation",
-            options=["🚀 New Research", "📊 Results & Export", "⚙️ Settings"],
-            icons=["rocket", "bar-chart-fill", "gear"],
+            options=["🚀 New Research", "⚙️ Settings"],
+            icons=["rocket", "gear"],
             menu_icon="cast",
             default_index=0,
         )
@@ -143,15 +144,13 @@ def main():
     # Main content based on selection
     if selected == "🚀 New Research":
         show_research_page()
-    elif selected == "📊 Results & Export":
-        show_results_and_export_page()
     elif selected == "⚙️ Settings":
         show_settings_page()
 
 def validate_excel_template(file_path):
     """
     Validate uploaded Excel file format
-    Returns: (is_valid, error_message, question_count, estimated_cost)
+    Returns: (is_valid, error_message, main_question_count, sub_question_count, total_estimated_cost)
     """
     try:
         # Try to read the Excel file
@@ -159,18 +158,18 @@ def validate_excel_template(file_path):
         
         # Check if 'template' sheet exists
         if 'template' not in excel_file.sheet_names:
-            return False, "❌ Sheet 'template' không tìm thấy! Vui lòng sử dụng template đúng format hoặc đổi tên sheet thành 'template'.", 0, 0
+            return False, "❌ Sheet 'template' not found! Please use the correct template format or rename your sheet to 'template'.", 0, 0, 0
         
         # Read template sheet
         df = pd.read_excel(file_path, sheet_name="template")
         
         # Check if dataframe is not empty
         if df.empty:
-            return False, "❌ Sheet 'template' trống! Vui lòng thêm dữ liệu vào template.", 0, 0
+            return False, "❌ Sheet 'template' is empty! Please add data to your template.", 0, 0, 0
         
         # Check for basic required structure
         if df.shape[1] < 3:  # At least 3 columns
-            return False, "❌ Template cần ít nhất 3 cột! Vui lòng sử dụng template chuẩn.", 0, 0
+            return False, "❌ Template needs at least 3 columns! Please use the standard template format.", 0, 0, 0
         
         # Look for purpose row
         purpose_found = False
@@ -180,23 +179,28 @@ def validate_excel_template(file_path):
                 break
         
         if not purpose_found:
-            return False, "❌ Không tìm thấy dòng 'Mục đích của Market Research'! Vui lòng sử dụng template chuẩn.", 0, 0
+            return False, "❌ 'Market Research Purpose' row not found! Please use the standard template format.", 0, 0, 0
         
         # Count questions for cost estimation
-        question_count = count_questions_in_excel(df)
-        estimated_cost = estimate_research_cost(question_count)
+        question_count, sub_question_count = count_questions_in_excel(df)
         
-        return True, "✅ Template hợp lệ!", question_count, estimated_cost
+        # Calculate total cost: Layer 3 + Layer 4 enhancements
+        layer3_cost = estimate_research_cost(question_count)
+        layer4_cost = sub_question_count * 0.05  # $0.05 per Layer 4 enhancement
+        total_estimated_cost = layer3_cost + layer4_cost
+        
+        return True, "✅ Template valid!", question_count, sub_question_count, total_estimated_cost
         
     except Exception as e:
-        return False, f"❌ Lỗi đọc file Excel: {str(e)}. Vui lòng kiểm tra file có bị hỏng không.", 0, 0
+        return False, f"❌ Error reading Excel file: {str(e)}. Please check if the file is corrupted.", 0, 0, 0
 
 def count_questions_in_excel(df):
     """
-    Count total number of questions (Layer 3) in Excel template
-    Returns: int - number of questions
+    Count total number of questions (Layer 3) and sub-questions (Layer 4) in Excel template
+    Returns: (main_question_count, sub_question_count)
     """
-    question_count = 0
+    main_question_count = 0
+    sub_question_count = 0
     
     # Find layer header row
     layer_header_row = None
@@ -206,9 +210,9 @@ def count_questions_in_excel(df):
             break
     
     if layer_header_row is None:
-        return 0
+        return 0, 0
     
-    # Count questions in Layer 3 column (usually column 3)
+    # Count questions in Layer 3 column (usually column 3) and sub-questions in Layer 4
     try:
         for idx in range(layer_header_row + 1, len(df)):
             row = df.iloc[idx]
@@ -221,12 +225,26 @@ def count_questions_in_excel(df):
             if len(row) > 3:
                 layer3_val = row.iloc[3] if pd.notna(row.iloc[3]) else None
                 if layer3_val and str(layer3_val).strip() and str(layer3_val) != 'None':
-                    question_count += 1
+                    main_question_count += 1
+                    
+                    # Check if this question has sub-questions (Layer 4 column)
+                    if len(row) > 4:
+                        layer4_val = row.iloc[4] if pd.notna(row.iloc[4]) else None
+                        if layer4_val and str(layer4_val).strip() and str(layer4_val) != 'None':
+                            # Count number of sub-questions (split by common delimiters)
+                            sub_q_text = str(layer4_val)
+                            # Split by common patterns: newlines, semicolons, bullet points
+                            import re
+                            sub_questions = re.split(r'[\n;•\-]\s*', sub_q_text)
+                            # Filter out empty strings and count actual sub-questions
+                            valid_sub_questions = [sq.strip() for sq in sub_questions if sq.strip()]
+                            if valid_sub_questions:
+                                sub_question_count += 1  # Count as 1 Layer 4 enhancement
     except Exception as e:
         print(f"Error counting questions: {e}")
-        return 0
+        return 0, 0
     
-    return question_count
+    return main_question_count, sub_question_count
 
 def estimate_research_cost(question_count):
     """
@@ -245,19 +263,33 @@ def estimate_research_cost(question_count):
         # For very large templates, increase cost per question
         return round(question_count * 0.04, 2)
 
-def display_cost_warning(question_count, estimated_cost):
-    """Display cost warning based on question count"""
-    if question_count <= 5:
-        st.info(f"💰 Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi)")
-    elif question_count <= 25:
-        st.info(f"💰 Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi) - Mức tiêu chuẩn")
-    elif question_count <= 50:
-        st.warning(f"⚠️ Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi) - Mức cao")
-    elif question_count <= 100:
-        st.error(f"🚨 Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi) - Mức rất cao!")
+def display_cost_warning(question_count, total_estimated_cost):
+    """Display cost warning based on question count and total cost including Layer 4"""
+    # Calculate Layer 3 and Layer 4 breakdown for display
+    layer3_cost = estimate_research_cost(question_count)
+    layer4_cost = total_estimated_cost - layer3_cost
+    
+    if total_estimated_cost <= 0.15:
+        st.info(f"💰 Total Cost: ${total_estimated_cost:.2f} ({question_count} questions)")
+    elif total_estimated_cost <= 0.50:
+        st.info(f"💰 Total Cost: ${total_estimated_cost:.2f} ({question_count} questions) - Standard Level")
+    elif total_estimated_cost <= 1.25:
+        st.warning(f"⚠️ Total Cost: ${total_estimated_cost:.2f} ({question_count} questions) - High Level")
+    elif total_estimated_cost <= 3.0:
+        st.error(f"🚨 Total Cost: ${total_estimated_cost:.2f} ({question_count} questions) - Very High!")
     else:
-        st.error(f"🔴 CẢNH BÁO: Chi phí ước tính ${estimated_cost} ({question_count} câu hỏi) - Rất tốn kém!")
-        st.error("💡 Khuyến nghị: Chia nhỏ thành nhiều nghiên cứu riêng biệt")
+        st.error(f"🔴 WARNING: Total Cost ${total_estimated_cost:.2f} ({question_count} questions) - Extremely Expensive!")
+        st.error("💡 Recommendation: Split into multiple smaller research projects")
+    
+    # Show breakdown if there are Layer 4 costs
+    if layer4_cost > 0:
+        st.caption(f"📊 Breakdown: Layer 3 (${layer3_cost:.2f}) + Layer 4 (${layer4_cost:.2f}) = ${total_estimated_cost:.2f}")
+        st.caption(f"ℹ️ Detected {int(layer4_cost / 0.05)} questions with sub-questions → auto Layer 4 reports")
+
+def proceed_with_research():
+    """Start research immediately for low-cost cases"""
+    st.session_state['start_research'] = True
+    st.rerun()
 
 def show_research_page():
     """New research creation page - simplified and streamlined"""
@@ -292,6 +324,96 @@ def show_research_page():
     
     st.markdown("---")
     
+    # Excel file upload with IMMEDIATE validation (outside form)
+    st.subheader("📁 Excel Framework Upload")
+    uploaded_file = st.file_uploader(
+        "Upload your research framework (optional)",
+        type=['xlsx'],
+        help="Upload customized template or leave empty to use default"
+    )
+    
+    # IMMEDIATE validation when file is uploaded
+    if uploaded_file:
+        st.markdown("#### 🔍 File Validation Results")
+        
+        # Save temp file for validation
+        temp_path = os.path.join('output', 'temp_uploaded.xlsx')
+        os.makedirs('output', exist_ok=True)
+        
+        try:
+            with open(temp_path, 'wb') as f:
+                f.write(uploaded_file.getbuffer())
+            
+            # Validate file
+            is_valid, message, question_count, sub_question_count, total_estimated_cost = validate_excel_template(temp_path)
+            
+            if is_valid:
+                st.success(message)
+                display_cost_warning(question_count, total_estimated_cost)
+                
+                # Show breakdown details
+                layer3_cost = estimate_research_cost(question_count)
+                layer4_cost = total_estimated_cost - layer3_cost
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("📊 Main Questions", question_count)
+                with col2:
+                    st.metric("🎯 Layer 4 Reports", int(layer4_cost / 0.05) if layer4_cost > 0 else 0)
+                with col3:
+                    st.metric("💰 Total Cost", f"${total_estimated_cost:.2f}")
+                    
+            else:
+                st.error(message)
+                
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+        except Exception as e:
+            st.error(f"❌ Error processing file: {str(e)}")
+    else:
+        # Show default template info when no file uploaded
+        st.markdown("#### 📋 Default Template Information")
+        default_template_path = 'input/market research template.xlsx'
+        
+        if os.path.exists(default_template_path):
+            try:
+                # Validate default template
+                is_valid, message, question_count, sub_question_count, total_estimated_cost = validate_excel_template(default_template_path)
+                
+                if is_valid:
+                    st.info("🎯 Using default research framework")
+                    display_cost_warning(question_count, total_estimated_cost)
+                    
+                    # Show breakdown details for default template
+                    layer3_cost = estimate_research_cost(question_count)
+                    layer4_cost = total_estimated_cost - layer3_cost
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("📊 Main Questions", question_count)
+                    with col2:
+                        st.metric("🎯 Layer 4 Reports", int(layer4_cost / 0.05) if layer4_cost > 0 else 0)
+                    with col3:
+                        st.metric("💰 Total Cost", f"${total_estimated_cost:.2f}")
+                        
+                else:
+                    st.warning("⚠️ Default template has issues. Please upload a custom file.")
+                    
+            except Exception as e:
+                st.warning(f"⚠️ Could not analyze default template: {str(e)}")
+                # Fallback to estimated values
+                estimated_questions = 22
+                estimated_cost = estimate_research_cost(estimated_questions)
+                st.info(f"💰 Estimated cost for default template: ~${estimated_cost:.2f} ({estimated_questions} questions)")
+        else:
+            st.warning("⚠️ Default template not found. Please upload a custom Excel file.")
+            # Show general estimation
+            st.info("💰 Typical research cost: $0.30-0.60 (15-30 questions)")
+    
+    st.markdown("---")
+    
     # Research form
     with st.form("research_form"):
         st.subheader("📝 Research Configuration")
@@ -323,54 +445,8 @@ def show_research_page():
                 help="Complete: Full research report | Quick: Test with 5 questions only"
             )
         
-        # Excel file upload with validation
-        st.markdown("##### 📁 Excel Framework")
-        uploaded_file = st.file_uploader(
-            "Upload your research framework (optional)",
-            type=['xlsx'],
-            help="Upload customized template or leave empty to use default"
-        )
-        
-        # Show file validation status
-        file_validation_container = st.container()
-        
-        # Advanced options (collapsed by default)
-        with st.expander("🔧 Advanced Options"):
-            custom_purpose = st.text_area(
-                "Custom Research Purpose",
-                placeholder="Leave empty to use default purpose from template",
-                help="Override default research objectives"
-            )
-        
         # Submit button
         submitted = st.form_submit_button("🚀 Start Research", use_container_width=True)
-    
-    # Validate uploaded file when selected
-    if uploaded_file:
-        with file_validation_container:
-            # Save temp file for validation
-            temp_path = os.path.join('output', 'temp_uploaded.xlsx')
-            os.makedirs('output', exist_ok=True)
-            
-            try:
-                with open(temp_path, 'wb') as f:
-                    f.write(uploaded_file.getbuffer())
-                
-                # Validate file
-                is_valid, message, question_count, estimated_cost = validate_excel_template(temp_path)
-                
-                if is_valid:
-                    st.success(message)
-                    display_cost_warning(question_count, estimated_cost)
-                else:
-                    st.error(message)
-                    
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-                    
-            except Exception as e:
-                st.error(f"❌ Error processing file: {str(e)}")
     
     if submitted:
         if not research_topic:
@@ -389,7 +465,7 @@ def show_research_page():
                 with open(temp_path, 'wb') as f:
                     f.write(uploaded_file.getbuffer())
                 
-                is_valid, error_msg, question_count, estimated_cost = validate_excel_template(temp_path)
+                is_valid, error_msg, question_count, sub_question_count, total_estimated_cost = validate_excel_template(temp_path)
                 
                 if not is_valid:
                     st.error(error_msg)
@@ -398,7 +474,7 @@ def show_research_page():
                     return
                 
                 final_question_count = question_count
-                final_estimated_cost = estimated_cost
+                final_estimated_cost = total_estimated_cost
                 
                 # Clean up validation file
                 if os.path.exists(temp_path):
@@ -408,377 +484,261 @@ def show_research_page():
                 st.error(f"❌ File validation error: {str(e)}")
                 return
         else:
-            # Use default template question count
-            # Estimate default template cost (around 20-25 questions)
-            final_question_count = 22  # Default template estimate
-            final_estimated_cost = estimate_research_cost(final_question_count)
+            # Use default template question count - get actual values from default template
+            default_template_path = 'input/market research template.xlsx'
+            if os.path.exists(default_template_path):
+                try:
+                    is_valid, _, question_count, sub_question_count, total_estimated_cost = validate_excel_template(default_template_path)
+                    if is_valid:
+                        final_question_count = question_count
+                        final_estimated_cost = total_estimated_cost
+                    else:
+                        # Fallback to estimated values
+                        final_question_count = 22
+                        final_estimated_cost = estimate_research_cost(final_question_count)
+                except Exception:
+                    # Fallback to estimated values
+                    final_question_count = 22
+                    final_estimated_cost = estimate_research_cost(final_question_count)
+            else:
+                # Fallback to estimated values
+                final_question_count = 22
+                final_estimated_cost = estimate_research_cost(final_question_count)
         
-        # Cost confirmation for expensive research
-        if final_estimated_cost > 1.0:
-            st.warning(f"🚨 CẢNH BÁO CHI PHÍ: ${final_estimated_cost} ({final_question_count} câu hỏi)")
-            
-            # Show confirmation message
-            st.markdown("""
-            **⚠️ Nghiên cứu này có chi phí cao!**
-            
-            💡 **Các lựa chọn khác:**
-            - Chọn "Quick Test (5 questions)" để test với $0.15
-            - Chia nhỏ template thành nhiều phần
-            - Giảm số câu hỏi trong Excel template
-            """)
-            
-            # Require explicit confirmation
-            confirm_expensive = st.checkbox(f"✅ Tôi xác nhận tiếp tục với chi phí ${final_estimated_cost}")
-            
-            if not confirm_expensive:
-                st.stop()  # Stop execution until user confirms
-        
-        # Clean market name (remove emoji and country code)
-        clean_market = market.split(' ', 1)[-1] if ' ' in market else market
-        
-        # Debug info
-        st.info(f"🔍 Processing: Topic='{research_topic}', Original Market='{market}', Clean Market='{clean_market}'")
-        
-        # Run research
-        run_research(research_topic, clean_market, uploaded_file, research_mode == "Quick Test (5 questions)", custom_purpose)
-
-def run_research(topic, market, uploaded_file, is_test_mode, custom_purpose):
-    """Execute the research process with enhanced error handling"""
-    
-    # Create output directory
-    os.makedirs('output', exist_ok=True)
-    
-    # Progress tracking
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    try:
-        # Step 1: Handle Excel file with validation
-        status_text.text("📁 Processing Excel framework...")
-        progress_bar.progress(10)
-        
+        # Handle file processing
         if uploaded_file:
             # Save uploaded file
             excel_path = os.path.join('output', 'uploaded_framework.xlsx')
             with open(excel_path, 'wb') as f:
                 f.write(uploaded_file.getbuffer())
-            
-            # Double-check validation
-            is_valid, error_msg, question_count, estimated_cost = validate_excel_template(excel_path)
-            if not is_valid:
-                st.error(f"File validation failed: {error_msg}")
-                return
-                
         else:
             # Use default
             excel_path = 'input/market research template.xlsx'
-            if not os.path.exists(excel_path):
-                st.error("❌ Default template not found! Please upload an Excel file or contact support.")
-                return
         
-        # Step 2: Convert Excel to JSON with error handling
-        status_text.text("🔄 Converting Excel to structured data...")
-        progress_bar.progress(20)
-        
+        # Convert Excel to structured data
         try:
             converter = ExcelToStructuredJSON()
             json_path = 'output/market_research_structured.json'
-            success = converter.convert_excel_to_json(excel_path, json_path, custom_purpose)
+            success = converter.convert_excel_to_json(excel_path, json_path)
             
-            if not success:
-                st.error("❌ Failed to convert Excel file! Please check if your template follows the correct format.")
+            if success:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    structured_data = json.load(f)
+            else:
+                st.error("❌ Failed to convert Excel file!")
                 return
                 
         except Exception as e:
             st.error(f"❌ Excel conversion error: {str(e)}")
-            st.info("💡 Try downloading a fresh template and make sure your file structure matches.")
             return
         
-        # Load structured data
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                structured_data = json.load(f)
-        except Exception as e:
-            st.error(f"❌ Error loading converted data: {str(e)}")
-            return
-        
-        # Step 3: Initialize research
-        status_text.text("🤖 Initializing AI research engine...")
-        progress_bar.progress(30)
-        
-        try:
-            researcher = OpenAIMarketResearch(
-                api_key=OPENAI_API_KEY,
-                industry=topic,
-                market=market
-            )
-        except Exception as e:
-            st.error(f"❌ AI initialization error: {str(e)}")
-            st.info("💡 Please check your API key in Settings.")
-            return
-        
-        # Step 4: Run research
-        status_text.text("🔍 Conducting market research analysis...")
-        progress_bar.progress(40)
-        
-        try:
-            research_results = researcher.run_layer3_research(
-                structured_data=structured_data,
-                topic=topic,
-                testing_mode=is_test_mode
-            )
-        except Exception as e:
-            st.error(f"❌ Research execution error: {str(e)}")
-            st.info("💡 This might be an API quota or network issue. Please try again.")
-            return
-        
-        # Step 5: Auto Layer 4 enhancement
-        status_text.text("⚡ Creating comprehensive Layer 4 reports...")
-        progress_bar.progress(60)
-        
-        # Save results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_filename = f"layer3_research_{timestamp}.json"
-        results_path = os.path.join('output', results_filename)
-        
-        with open(results_path, 'w', encoding='utf-8') as f:
-            json.dump(research_results, f, ensure_ascii=False, indent=2)
-        
-        # Auto-enhance questions with sub-questions
-        enhanced_count = 0
-        total_main_questions = 0
-        
-        try:
-            for layer in research_results.get('research_results', []):
-                for category in layer.get('categories', []):
-                    for question in category.get('questions', []):
-                        total_main_questions += 1
-                        sub_questions = question.get('sub_questions', [])
-                        
-                        if sub_questions and len(sub_questions) > 0:
-                            # Has sub-questions -> create comprehensive Layer 4
-                            progress_text = f"Creating comprehensive report {enhanced_count + 1}..."
-                            status_text.text(f"🎯 {progress_text}")
-                            
-                            comprehensive_content = researcher.enhance_to_layer4_comprehensive(
-                                research_results,
-                                layer.get('layer_name'),
-                                category.get('category_name'),
-                                question.get('main_question')
-                            )
-                            
-                            # Add to results
-                            question['layer4_comprehensive_report'] = {
-                                "comprehensive_content": comprehensive_content,
-                                "enhancement_timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                                "sub_questions_integrated": sub_questions
-                            }
-                            
-                            enhanced_count += 1
-        except Exception as e:
-            st.warning(f"⚠️ Layer 4 enhancement partially failed: {str(e)}")
-            st.info("🔄 Continuing with available results...")
-        
-        # Save enhanced results
-        progress_bar.progress(80)
-        status_text.text("💾 Saving enhanced research results...")
-        
-        with open(results_path, 'w', encoding='utf-8') as f:
-            json.dump(research_results, f, ensure_ascii=False, indent=2)
-        
-        # Step 6: Create Word report
-        status_text.text("📄 Generating Word report...")
-        progress_bar.progress(90)
-        
-        try:
-            word_filename = f"Market_Research_{topic.replace(' ', '_')}_{timestamp}.docx"
-            word_path = os.path.join('output', word_filename)
-            
-            create_comprehensive_word_report(results_path, word_path)
-        except Exception as e:
-            st.warning(f"⚠️ Word report generation failed: {str(e)}")
-            st.info("📊 JSON results are still available for download.")
-            word_path = None
-        
-        # Complete
-        progress_bar.progress(100)
-        status_text.text("✅ Research completed successfully!")
-        
-        # Show results
-        st.success("🎉 Research completed successfully!")
-        
-        # Results summary
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.metric("📊 Total Questions", total_main_questions)
-        with col2:
-            st.metric("🎯 Enhanced Reports", enhanced_count)
-        with col3:
-            estimated_cost = total_main_questions * 0.02 + enhanced_count * 0.05
-            st.metric("💰 Estimated Cost", f"${estimated_cost:.2f}")
-        
-        # Download section
-        st.markdown("### 📥 Download Results")
-        
-        col1, col2 = st.columns(2)
-        
-        # JSON download
-        with col1:
-            with open(results_path, 'r', encoding='utf-8') as f:
-                st.download_button(
-                    label="📊 Download JSON Data",
-                    data=f.read(),
-                    file_name=results_filename,
-                    mime="application/json",
-                    use_container_width=True
-                )
-        
-        # Word download (if available)
-        with col2:
-            if word_path and os.path.exists(word_path):
-                with open(word_path, 'rb') as f:
-                    st.download_button(
-                        label="📄 Download Word Report",
-                        data=f.read(),
-                        file_name=word_filename,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
-            else:
-                st.info("📄 Word report not available")
-        
-        # Store in session state for results page
-        st.session_state['last_research'] = {
-            'topic': topic,
+        # Store research params in session state
+        st.session_state['pending_research'] = {
+            'structured_data': structured_data,
+            'industry': research_topic,
             'market': market,
-            'timestamp': timestamp,
-            'total_questions': total_main_questions,
-            'enhanced_reports': enhanced_count,
-            'cost': estimated_cost,
-            'results_path': results_path,
-            'word_path': word_path
+            'testing_mode': research_mode == "Quick Test (5 questions)",
+            'api_key': OPENAI_API_KEY,
+            'question_count': final_question_count,
+            'estimated_cost': final_estimated_cost
         }
         
-    except Exception as e:
-        st.error(f"❌ Unexpected error: {str(e)}")
-        st.exception(e)
-        st.info("💡 Please try again or contact support if the problem persists.")
-
-def show_results_and_export_page():
-    """Combined results analytics and export page"""
-    st.header("📊 Research Results & Export")
+        # Cost confirmation for expensive research
+        if final_estimated_cost > 1.0:
+            # Show cost warning dialog
+            st.session_state['show_cost_dialog'] = True
+            st.rerun()
+        else:
+            # Proceed directly for low-cost research
+            proceed_with_research()
     
-    # Check for recent research
-    if 'last_research' not in st.session_state:
-        st.info("🔍 No recent research data. Create a new research first!")
+    # Show completed research results if available - NOW AT BOTTOM
+    if st.session_state.get('research_completed', False):
+        st.success("🎉 Research completed successfully!")
         
-        # Show available files for export
-        st.subheader("📄 Available Research Files")
-        show_available_files()
-        return
-    
-    research_data = st.session_state['last_research']
-    
-    # Recent research overview
-    st.subheader("🎯 Latest Research Overview")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("📋 Topic", research_data['topic'])
-    with col2:
-        st.metric("🌍 Market", research_data['market'])
-    with col3:
-        st.metric("📊 Questions", research_data['total_questions'])
-    with col4:
-        st.metric("💰 Cost", f"${research_data['cost']:.2f}")
-    
-    # Download latest results
-    st.subheader("📥 Download Latest Results")
-    
-    col1, col2 = st.columns(2)
-    
-    # JSON download
-    with col1:
-        if os.path.exists(research_data['results_path']):
-            with open(research_data['results_path'], 'r', encoding='utf-8') as f:
-                st.download_button(
-                    label="📊 Download JSON Data",
-                    data=f.read(),
-                    file_name=f"research_{research_data['timestamp']}.json",
-                    mime="application/json",
-                    use_container_width=True
-                )
-    
-    # Word download
-    with col2:
-        if research_data.get('word_path') and os.path.exists(research_data['word_path']):
-            with open(research_data['word_path'], 'rb') as f:
+        # Show research statistics first
+        results = st.session_state.get('research_results', {})
+        stats = results.get('research_statistics', {})
+        if stats:
+            st.markdown("#### 📈 Research Statistics")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📊 Questions Processed", stats.get('total_questions_processed', 0))
+            with col2:
+                st.metric("📚 Sources Tracked", stats.get('total_sources_tracked', 0))
+            with col3:
+                st.metric("⏱️ Processing Time", stats.get('processing_time_estimate', 'N/A'))
+        
+        # Word download button below statistics
+        word_file = st.session_state.get('word_file')
+        if word_file and os.path.exists(word_file):
+            with open(word_file, "rb") as file:
                 st.download_button(
                     label="📄 Download Word Report",
-                    data=f.read(),
-                    file_name=f"report_{research_data['timestamp']}.docx",
+                    data=file.read(),
+                    file_name=os.path.basename(word_file),
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True
                 )
-        else:
-            st.info("📄 Word report not available")
+        
+        # Button to start new research
+        if st.button("🚀 Start New Research", type="primary"):
+            # Clear research completion status
+            for key in ['research_completed', 'research_results', 'results_file', 'word_file']:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
     
-    st.markdown("---")
-    
-    # All available files
-    st.subheader("📄 All Research Files")
-    show_available_files()
+    # Check if research should start (after dialog confirmation)
+    if st.session_state.get('start_research', False):
+        st.session_state['start_research'] = False
+        # Clean up dialog state
+        if 'dialog_processed' in st.session_state:
+            del st.session_state['dialog_processed']
+        
+        research_params = st.session_state.get('pending_research', {})
+        if research_params:
+            structured_data = research_params['structured_data']
+            industry = research_params['industry']
+            market = research_params['market']
+            testing_mode = research_params['testing_mode']
+            api_key = research_params['api_key']
+            
+            # Progress tracking - consistent with default file experience
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            try:
+                # Execute research with clean progress tracking
+                status_text.text("🤖 Initializing AI research engine...")
+                progress_bar.progress(10)
+                
+                researcher = OpenAIMarketResearch(api_key=api_key, industry=industry, market=market)
+                
+                status_text.text("🔍 Starting market research analysis...")
+                progress_bar.progress(20)
+                
+                results = researcher.run_layer3_research(
+                    structured_data=structured_data,
+                    topic=industry,
+                    testing_mode=testing_mode
+                )
+                
+                status_text.text("💾 Saving research results...")
+                progress_bar.progress(80)
+                
+                # Add API key to results for export function
+                results['api_key'] = api_key
+                
+                # Save results
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Determine market suffix for filename
+                market_suffix = ""
+                if market and market.lower() != "global market":
+                    if "việt nam" in market.lower() or "vietnam" in market.lower():
+                        market_suffix = "_VN"
+                    else:
+                        # Clean market name for filename
+                        clean_market = re.sub(r'[^\w\s-]', '', market).strip()
+                        clean_market = re.sub(r'\s+', '_', clean_market)
+                        market_suffix = f"_{clean_market}"
+                
+                industry_clean = re.sub(r'[^\w\s-]', '', industry)
+                industry_clean = re.sub(r'\s+', '_', industry_clean)
+                
+                filename = f"layer3_research_{industry_clean}{market_suffix}_{timestamp}.json"
+                output_path = os.path.join("output", filename)
+                
+                # Ensure output directory exists
+                os.makedirs("output", exist_ok=True)
+                
+                # Save with proper encoding
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    json.dump(results, f, ensure_ascii=False, indent=2)
+                
+                progress_bar.progress(90)
+                status_text.text("📄 Generating comprehensive Word report...")
+                
+                # Generate Word report automatically with Vietnamese filename
+                word_file = create_comprehensive_word_report(output_path, use_vietnamese_filename=True)
+                
+                progress_bar.progress(100)
+                status_text.text("✅ Research completed successfully!")
+                
+                st.session_state['research_completed'] = True
+                st.session_state['research_results'] = results
+                st.session_state['results_file'] = output_path
+                st.session_state['word_file'] = word_file
+                
+                # Clear pending research
+                for key in ['pending_research', 'start_research']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                
+                st.success("✅ Research completed! Download files are ready.")
+                st.rerun()
+                
+            except Exception as e:
+                progress_bar.progress(0)
+                status_text.text("❌ Research failed")
+                st.error(f"❌ Research failed: {str(e)}")
+                
+                # Clear session state on error
+                for key in ['pending_research', 'start_research']:
+                    if key in st.session_state:
+                        del st.session_state[key]
 
-def show_available_files():
-    """Show all available research files for download"""
-    output_dir = 'output'
-    if os.path.exists(output_dir):
-        research_files = [f for f in os.listdir(output_dir) if f.startswith('layer3_research_') and f.endswith('.json')]
-        word_files = [f for f in os.listdir(output_dir) if f.endswith('.docx')]
-    else:
-        research_files = []
-        word_files = []
+# Cost confirmation dialog
+if st.session_state.get('show_cost_dialog', False) and not st.session_state.get('dialog_processed', False):
+    # Get pending research data
+    pending = st.session_state.get('pending_research', {})
+    cost = pending.get('estimated_cost', 0)
+    question_count = pending.get('question_count', 0)
     
-    if not research_files and not word_files:
-        st.info("📁 No research files found. Create your first research!")
-        return
+    @st.dialog("⚠️ High Cost Warning")
+    def show_cost_confirmation():
+        st.error("🚨 **HIGH RESEARCH COST DETECTED**")
+        
+        # Cost breakdown
+        st.markdown(f"""
+        ### 💰 Estimated Cost: **${cost:.2f}** 
+        
+        **📊 Details:**
+        - Total Questions: {question_count}
+        - Layer 3 + Layer 4 Fees: ${cost:.2f}
+        
+        **⚠️ This is higher than normal cost!**
+        
+        **💡 Alternative Options:**
+        - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
+        - ✂️ Split template into smaller parts  
+        - 📝 Reduce questions in Excel template
+        """)
+        
+        st.markdown("---")
+        
+        # Confirmation buttons
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("❌ **Cancel**", use_container_width=True):
+                # Clear everything and reset
+                for key in ['show_cost_dialog', 'pending_research', 'dialog_processed']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+        
+        with col2:
+            if st.button(f"✅ **Proceed - ${cost:.2f}**", use_container_width=True, type="primary"):
+                # Mark dialog as processed and start research
+                st.session_state['dialog_processed'] = True
+                st.session_state['show_cost_dialog'] = False
+                st.session_state['start_research'] = True
+                st.rerun()
     
-    # Show files in a clean format
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if research_files:
-            st.markdown("#### 📊 JSON Data Files")
-            for file in sorted(research_files, reverse=True)[:5]:
-                file_path = os.path.join(output_dir, file)
-                timestamp = file.replace('layer3_research_', '').replace('.json', '')
-                
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    st.download_button(
-                        label=f"📊 {timestamp}",
-                        data=f.read(),
-                        file_name=file,
-                        mime="application/json",
-                        key=f"json_{file}"
-                    )
-    
-    with col2:
-        if word_files:
-            st.markdown("#### 📄 Word Reports")
-            for file in sorted(word_files, reverse=True)[:5]:
-                file_path = os.path.join(output_dir, file)
-                display_name = file[:30] + "..." if len(file) > 30 else file
-                
-                with open(file_path, 'rb') as f:
-                    st.download_button(
-                        label=f"📄 {display_name}",
-                        data=f.read(),
-                        file_name=file,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        key=f"word_{file}"
-                    )
+    # Show the dialog
+    show_cost_confirmation()
 
 def show_settings_page():
     """Settings and configuration page"""
@@ -848,56 +808,5 @@ def show_settings_page():
                 else:
                     st.error("Please enter a valid API key!")
     
-    # System Information
-    st.markdown("---")
-    st.subheader("📊 System Information")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.info("🐍 Python Environment")
-        st.text(f"Streamlit: {st.__version__}")
-        
-        # Deployment detection
-        is_cloud = not os.path.exists('config.py')
-        deployment_type = "☁️ Streamlit Cloud" if is_cloud else "💻 Local Development"
-        st.text(f"Environment: {deployment_type}")
-        
-        # Check if output directory exists
-        output_exists = os.path.exists('output')
-        st.text(f"Output Directory: {'✅' if output_exists else '❌'}")
-        
-        # Check default framework
-        framework_exists = os.path.exists('input/market research template.xlsx')
-        st.text(f"Default Framework: {'✅' if framework_exists else '❌'}")
-    
-    with col2:
-        st.info("💾 Storage")
-        if os.path.exists('output'):
-            files = os.listdir('output')
-            json_files = len([f for f in files if f.endswith('.json')])
-            word_files = len([f for f in files if f.endswith('.docx')])
-            st.text(f"Research Files: {json_files}")
-            st.text(f"Word Reports: {word_files}")
-        else:
-            st.text("No output directory found")
-    
-    # Clear data
-    st.markdown("---")
-    st.subheader("🗑️ Data Management")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("🧹 Clear Session Data", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.success("Session data cleared!")
-    
-    with col2:
-        if st.button("📁 Create Output Directory", use_container_width=True):
-            os.makedirs('output', exist_ok=True)
-            st.success("Output directory created!")
-
 if __name__ == "__main__":
     main() 
