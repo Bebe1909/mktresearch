@@ -151,7 +151,7 @@ def main():
 def validate_excel_template(file_path):
     """
     Validate uploaded Excel file format
-    Returns: (is_valid, error_message)
+    Returns: (is_valid, error_message, question_count, estimated_cost)
     """
     try:
         # Try to read the Excel file
@@ -159,18 +159,18 @@ def validate_excel_template(file_path):
         
         # Check if 'template' sheet exists
         if 'template' not in excel_file.sheet_names:
-            return False, "❌ Sheet 'template' không tìm thấy! Vui lòng sử dụng template đúng format hoặc đổi tên sheet thành 'template'."
+            return False, "❌ Sheet 'template' không tìm thấy! Vui lòng sử dụng template đúng format hoặc đổi tên sheet thành 'template'.", 0, 0
         
         # Read template sheet
         df = pd.read_excel(file_path, sheet_name="template")
         
         # Check if dataframe is not empty
         if df.empty:
-            return False, "❌ Sheet 'template' trống! Vui lòng thêm dữ liệu vào template."
+            return False, "❌ Sheet 'template' trống! Vui lòng thêm dữ liệu vào template.", 0, 0
         
         # Check for basic required structure
         if df.shape[1] < 3:  # At least 3 columns
-            return False, "❌ Template cần ít nhất 3 cột! Vui lòng sử dụng template chuẩn."
+            return False, "❌ Template cần ít nhất 3 cột! Vui lòng sử dụng template chuẩn.", 0, 0
         
         # Look for purpose row
         purpose_found = False
@@ -180,12 +180,84 @@ def validate_excel_template(file_path):
                 break
         
         if not purpose_found:
-            return False, "❌ Không tìm thấy dòng 'Mục đích của Market Research'! Vui lòng sử dụng template chuẩn."
+            return False, "❌ Không tìm thấy dòng 'Mục đích của Market Research'! Vui lòng sử dụng template chuẩn.", 0, 0
         
-        return True, "✅ Template hợp lệ!"
+        # Count questions for cost estimation
+        question_count = count_questions_in_excel(df)
+        estimated_cost = estimate_research_cost(question_count)
+        
+        return True, "✅ Template hợp lệ!", question_count, estimated_cost
         
     except Exception as e:
-        return False, f"❌ Lỗi đọc file Excel: {str(e)}. Vui lòng kiểm tra file có bị hỏng không."
+        return False, f"❌ Lỗi đọc file Excel: {str(e)}. Vui lòng kiểm tra file có bị hỏng không.", 0, 0
+
+def count_questions_in_excel(df):
+    """
+    Count total number of questions (Layer 3) in Excel template
+    Returns: int - number of questions
+    """
+    question_count = 0
+    
+    # Find layer header row
+    layer_header_row = None
+    for idx, row in df.iterrows():
+        if any("Layer 1" in str(cell) for cell in row if pd.notna(cell)):
+            layer_header_row = idx
+            break
+    
+    if layer_header_row is None:
+        return 0
+    
+    # Count questions in Layer 3 column (usually column 3)
+    try:
+        for idx in range(layer_header_row + 1, len(df)):
+            row = df.iloc[idx]
+            
+            # Skip empty rows
+            if row.isna().all():
+                continue
+            
+            # Check Layer 3 column (index 3, assuming 0-based indexing)
+            if len(row) > 3:
+                layer3_val = row.iloc[3] if pd.notna(row.iloc[3]) else None
+                if layer3_val and str(layer3_val).strip() and str(layer3_val) != 'None':
+                    question_count += 1
+    except Exception as e:
+        print(f"Error counting questions: {e}")
+        return 0
+    
+    return question_count
+
+def estimate_research_cost(question_count):
+    """
+    Estimate research cost based on number of questions
+    Returns: float - estimated cost in USD
+    """
+    if question_count <= 5:
+        return round(question_count * 0.03, 2)
+    elif question_count <= 25:
+        return round(question_count * 0.02, 2)
+    elif question_count <= 50:
+        return round(question_count * 0.025, 2)
+    elif question_count <= 100:
+        return round(question_count * 0.03, 2)
+    else:
+        # For very large templates, increase cost per question
+        return round(question_count * 0.04, 2)
+
+def display_cost_warning(question_count, estimated_cost):
+    """Display cost warning based on question count"""
+    if question_count <= 5:
+        st.info(f"💰 Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi)")
+    elif question_count <= 25:
+        st.info(f"💰 Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi) - Mức tiêu chuẩn")
+    elif question_count <= 50:
+        st.warning(f"⚠️ Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi) - Mức cao")
+    elif question_count <= 100:
+        st.error(f"🚨 Chi phí ước tính: ${estimated_cost} ({question_count} câu hỏi) - Mức rất cao!")
+    else:
+        st.error(f"🔴 CẢNH BÁO: Chi phí ước tính ${estimated_cost} ({question_count} câu hỏi) - Rất tốn kém!")
+        st.error("💡 Khuyến nghị: Chia nhỏ thành nhiều nghiên cứu riêng biệt")
 
 def show_research_page():
     """New research creation page - simplified and streamlined"""
@@ -285,10 +357,11 @@ def show_research_page():
                     f.write(uploaded_file.getbuffer())
                 
                 # Validate file
-                is_valid, message = validate_excel_template(temp_path)
+                is_valid, message, question_count, estimated_cost = validate_excel_template(temp_path)
                 
                 if is_valid:
                     st.success(message)
+                    display_cost_warning(question_count, estimated_cost)
                 else:
                     st.error(message)
                     
@@ -305,6 +378,9 @@ def show_research_page():
             return
         
         # Validate uploaded file again before processing
+        final_question_count = 0
+        final_estimated_cost = 0
+        
         if uploaded_file:
             temp_path = os.path.join('output', 'temp_validation.xlsx')
             os.makedirs('output', exist_ok=True)
@@ -313,13 +389,16 @@ def show_research_page():
                 with open(temp_path, 'wb') as f:
                     f.write(uploaded_file.getbuffer())
                 
-                is_valid, error_msg = validate_excel_template(temp_path)
+                is_valid, error_msg, question_count, estimated_cost = validate_excel_template(temp_path)
                 
                 if not is_valid:
                     st.error(error_msg)
                     if os.path.exists(temp_path):
                         os.remove(temp_path)
                     return
+                
+                final_question_count = question_count
+                final_estimated_cost = estimated_cost
                 
                 # Clean up validation file
                 if os.path.exists(temp_path):
@@ -328,6 +407,31 @@ def show_research_page():
             except Exception as e:
                 st.error(f"❌ File validation error: {str(e)}")
                 return
+        else:
+            # Use default template question count
+            # Estimate default template cost (around 20-25 questions)
+            final_question_count = 22  # Default template estimate
+            final_estimated_cost = estimate_research_cost(final_question_count)
+        
+        # Cost confirmation for expensive research
+        if final_estimated_cost > 1.0:
+            st.warning(f"🚨 CẢNH BÁO CHI PHÍ: ${final_estimated_cost} ({final_question_count} câu hỏi)")
+            
+            # Show confirmation message
+            st.markdown("""
+            **⚠️ Nghiên cứu này có chi phí cao!**
+            
+            💡 **Các lựa chọn khác:**
+            - Chọn "Quick Test (5 questions)" để test với $0.15
+            - Chia nhỏ template thành nhiều phần
+            - Giảm số câu hỏi trong Excel template
+            """)
+            
+            # Require explicit confirmation
+            confirm_expensive = st.checkbox(f"✅ Tôi xác nhận tiếp tục với chi phí ${final_estimated_cost}")
+            
+            if not confirm_expensive:
+                st.stop()  # Stop execution until user confirms
         
         # Clean market name (remove emoji and country code)
         clean_market = market.split(' ', 1)[-1] if ' ' in market else market
@@ -357,7 +461,7 @@ def run_research(topic, market, uploaded_file, is_test_mode, custom_purpose):
                 f.write(uploaded_file.getbuffer())
             
             # Double-check validation
-            is_valid, error_msg = validate_excel_template(excel_path)
+            is_valid, error_msg, question_count, estimated_cost = validate_excel_template(excel_path)
             if not is_valid:
                 st.error(f"File validation failed: {error_msg}")
                 return
