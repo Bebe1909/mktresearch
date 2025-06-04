@@ -436,6 +436,9 @@ def show_research_page():
         # Clean market name (remove emoji and country code)
         clean_market = market.split(' ', 1)[-1] if ' ' in market else market
         
+        # Debug info
+        st.info(f"🔍 Processing: Topic='{research_topic}', Original Market='{market}', Clean Market='{clean_market}'")
+        
         # Run research
         run_research(research_topic, clean_market, uploaded_file, research_mode == "Quick Test (5 questions)", custom_purpose)
 

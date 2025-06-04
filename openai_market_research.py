@@ -92,7 +92,7 @@ CÂU HỎI CẦN TRẢ LỜI: "{main_question}"
 1. **TRẢ LỜI TRỰC TIẾP** câu hỏi ngay từ câu đầu tiên
 2. **BẮT ĐẦU** bằng: "Để trả lời câu hỏi về [tóm tắt ngắn câu hỏi]..."
 3. **FOCUS 100%** vào nội dung mà câu hỏi đang hỏi - không drift sang chủ đề khác
-4. **SỬ DỤNG** số liệu và ví dụ cụ thể từ thị trường Việt Nam
+4. **SỬ DỤNG** số liệu và ví dụ cụ thể từ thị trường {self.market}
 5. **KẾT THÚC** bằng conclusion trả lời rõ ràng câu hỏi
 
 **CẤU TRÚC:**
@@ -160,7 +160,7 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
 - KHÔNG sử dụng section headers hay bullet points
 - KHÔNG có câu giới thiệu hay mở đầu
 - VIẾT liền mạch như một bài phân tích chuyên nghiệp
-- Use real Vietnamese market data và case studies
+- Use real {self.market} market data và case studies
 - BE SPECIFIC - tránh generalities
 - Total: 550-700 từ
 
@@ -475,9 +475,8 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
             dict: Kết quả nghiên cứu
         """
         
-        # Set industry and market from topic
+        # Set industry from topic, but keep the market that was passed to __init__
         self.industry = topic
-        self.market = "Việt Nam"
         
         # Set limit based on testing mode
         limit = 5 if testing_mode else None
