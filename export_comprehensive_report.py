@@ -16,6 +16,75 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.shared import OxmlElement, qn
 import re
 
+def get_vietnamese_market_name(market: str) -> str:
+    """Translate market name to Vietnamese for consistent Vietnamese reports"""
+    market_translations = {
+        "🇺🇸 United States": "🇺🇸 Hoa Kỳ",
+        "🇨🇳 China": "🇨🇳 Trung Quốc", 
+        "🇯🇵 Japan": "🇯🇵 Nhật Bản",
+        "🇰🇷 South Korea": "🇰🇷 Hàn Quốc",
+        "🇹🇭 Thailand": "🇹🇭 Thái Lan",
+        "🇸🇬 Singapore": "🇸🇬 Singapore",
+        "🇲🇾 Malaysia": "🇲🇾 Malaysia",
+        "🇮🇩 Indonesia": "🇮🇩 Indonesia",
+        "🇵🇭 Philippines": "🇵🇭 Philippines",
+        "🇬🇧 United Kingdom": "🇬🇧 Vương quốc Anh",
+        "🇩🇪 Germany": "🇩🇪 Đức",
+        "🇫🇷 France": "🇫🇷 Pháp",
+        "🇮🇹 Italy": "🇮🇹 Ý",
+        "🇪🇸 Spain": "🇪🇸 Tây Ban Nha",
+        "🇨🇦 Canada": "🇨🇦 Canada",
+        "🇦🇺 Australia": "🇦🇺 Úc",
+        "🇳🇿 New Zealand": "🇳🇿 New Zealand",
+        "🇧🇷 Brazil": "🇧🇷 Brazil",
+        "🇲🇽 Mexico": "🇲🇽 Mexico",
+        "🇮🇳 India": "🇮🇳 Ấn Độ",
+        "🇷🇺 Russia": "🇷🇺 Nga",
+        "🇿🇦 South Africa": "🇿🇦 Nam Phi",
+        "🇪🇬 Egypt": "🇪🇬 Ai Cập",
+        "🇦🇪 UAE": "🇦🇪 UAE",
+        "🇸🇦 Saudi Arabia": "🇸🇦 Ả Rập Saudi",
+        "🇹🇷 Turkey": "🇹🇷 Thổ Nhĩ Kỳ",
+        "🇳🇱 Netherlands": "🇳🇱 Hà Lan",
+        "🇸🇪 Sweden": "🇸🇪 Thụy Điển",
+        "🇳🇴 Norway": "🇳🇴 Na Uy",
+        "🇩🇰 Denmark": "🇩🇰 Đan Mạch",
+        "🇫🇮 Finland": "🇫🇮 Phần Lan",
+        "🇨🇭 Switzerland": "🇨🇭 Thụy Sĩ",
+        "🇦🇹 Austria": "🇦🇹 Áo",
+        "🇧🇪 Belgium": "🇧🇪 Bỉ",
+        "🇵🇱 Poland": "🇵🇱 Ba Lan",
+        "🇨🇿 Czech Republic": "🇨🇿 Cộng hòa Séc",
+        "🇭🇺 Hungary": "🇭🇺 Hungary",
+        "🇬🇷 Greece": "🇬🇷 Hy Lạp",
+        "🇵🇹 Portugal": "🇵🇹 Bồ Đào Nha",
+        "🇮🇪 Ireland": "🇮🇪 Ireland",
+        "🇮🇱 Israel": "🇮🇱 Israel",
+        "🇭🇰 Hong Kong": "🇭🇰 Hồng Kông",
+        "🇹🇼 Taiwan": "🇹🇼 Đài Loan",
+        "🇦🇷 Argentina": "🇦🇷 Argentina",
+        "🇨🇱 Chile": "🇨🇱 Chile",
+        "🇨🇴 Colombia": "🇨🇴 Colombia",
+        "🇵🇪 Peru": "🇵🇪 Peru",
+        "🇻🇪 Venezuela": "🇻🇪 Venezuela",
+        "🇪🇨 Ecuador": "🇪🇨 Ecuador",
+        "🇺🇾 Uruguay": "🇺🇾 Uruguay",
+        "🇧🇴 Bolivia": "🇧🇴 Bolivia",
+        "🇵🇾 Paraguay": "🇵🇾 Paraguay",
+        "🇳🇬 Nigeria": "🇳🇬 Nigeria",
+        "🇰🇪 Kenya": "🇰🇪 Kenya",
+        "🇬🇭 Ghana": "🇬🇭 Ghana",
+        "🇪🇹 Ethiopia": "🇪🇹 Ethiopia",
+        "🇺🇬 Uganda": "🇺🇬 Uganda",
+        "🇹🇿 Tanzania": "🇹🇿 Tanzania",
+        "🇿🇼 Zimbabwe": "🇿🇼 Zimbabwe",
+        "🌏 Southeast Asia": "🌏 Đông Nam Á",
+        "🌍 Asia-Pacific": "🌍 Châu Á - Thái Bình Dương",
+        "🌎 Global Market": "🌎 Thị trường Toàn cầu"
+    }
+    
+    return market_translations.get(market, market)
+
 def add_custom_styles(doc):
     """Thêm custom styles cho document"""
     
@@ -189,13 +258,14 @@ def create_references_section(doc, data):
     metadata = data.get('research_metadata', {})
     topic = metadata.get('industry', 'Nghiên cứu thị trường')
     market = metadata.get('market', 'Việt Nam')
+    vietnamese_market = get_vietnamese_market_name(market)  # Translate to Vietnamese
     model_used = metadata.get('model_used', 'gpt-3.5-turbo')
     api_provider = metadata.get('api_provider', 'OpenAI')
     current_year = datetime.now().year
     
     # Start with AI source acknowledgment
     references = [
-        f"1. {api_provider} {model_used}. ({current_year}). AI-powered market research analysis for {topic} in {market}. Retrieved from https://openai.com"
+        f"1. {api_provider} {model_used}. ({current_year}). AI-powered market research analysis for {topic} in {vietnamese_market}. Retrieved from https://openai.com"
     ]
     
     # Get tracked references from research data
@@ -235,7 +305,7 @@ def create_references_section(doc, data):
     doc.add_paragraph()
     note_para = doc.add_paragraph()
     note_para.add_run("Ghi chú về nguồn dữ liệu: ").bold = True
-    note_para.add_run(f"Báo cáo này được tạo bằng AI ({api_provider} {model_used}) để phân tích và tổng hợp thông tin về thị trường {topic} tại {market}. "
+    note_para.add_run(f"Báo cáo này được tạo bằng AI ({api_provider} {model_used}) để phân tích và tổng hợp thông tin về thị trường {topic} tại {vietnamese_market}. "
                      f"AI được sử dụng để thu thập, phân tích và trình bày thông tin từ các nguồn công khai. "
                      f"Các nguồn tham khảo được trích xuất tự động từ quá trình phân tích và được sắp xếp theo tần suất sử dụng. "
                      f"Các thông tin và số liệu trong báo cáo phản ánh kiến thức và dữ liệu có sẵn của mô hình AI tại thời điểm tạo báo cáo ({datetime.now().strftime('%m/%Y')}). "
@@ -435,6 +505,9 @@ def create_executive_summary(doc, data):
     """Tạo Executive Summary theo template 5 phần"""
     print("📋 Tạo Executive Summary...")
     
+    # Get Vietnamese market name for consistency
+    vietnamese_market = get_vietnamese_market_name(data.get('market', 'Việt Nam'))
+    
     doc.add_page_break()
     
     # Executive Summary Header
@@ -457,7 +530,7 @@ def create_executive_summary(doc, data):
     else:
         purpose_para.add_run("Báo cáo này nhằm:")
         purpose_para.add_run(f"""
-• Hiểu thị trường tổng thể: xu hướng, quy mô, tốc độ tăng trưởng của ngành {data.get('industry', 'N/A')} tại {data.get('market', 'N/A')}
+• Hiểu thị trường tổng thể: xu hướng, quy mô, tốc độ tăng trưởng của ngành {data.get('industry', 'N/A')} tại {vietnamese_market}
 • Biết được mình đang định nhảy vào thị trường lớn hay nhỏ, chật chội hay đang mở
 • Phân tích môi trường vĩ mô ảnh hưởng đến ngành (chính trị, kinh tế, công nghệ...)
 • Dùng trước khi quyết định có nên vào thị trường này không, hoặc để thuyết phục nhà đầu tư""")
@@ -471,7 +544,7 @@ def create_executive_summary(doc, data):
     
     scope_para = doc.add_paragraph()
     stats = calculate_statistics(data)
-    scope_para.add_run(f"Tập trung vào lĩnh vực {data.get('industry', 'N/A')} tại thị trường {data.get('market', 'Việt Nam')} trong năm {datetime.now().year}, sử dụng phương pháp nghiên cứu phân tích đa tầng với {stats['total_questions']} câu hỏi nghiên cứu, áp dụng AI để thu thập và phân tích thông tin từ nhiều nguồn khác nhau.")
+    scope_para.add_run(f"Tập trung vào lĩnh vực {data.get('industry', 'N/A')} tại thị trường {vietnamese_market} trong năm {datetime.now().year}, sử dụng phương pháp nghiên cứu phân tích đa tầng với {stats['total_questions']} câu hỏi nghiên cứu, áp dụng AI để thu thập và phân tích thông tin từ nhiều nguồn khác nhau.")
     scope_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     set_paragraph_font(scope_para)
     
@@ -533,10 +606,10 @@ def create_executive_summary(doc, data):
         for impact in impact_insights[:3]:  # Top 3 impacts
             impact_para.add_run(f"\n• {impact}")
         
-        impact_para.add_run(f"\n\nTổng thể, điều này sẽ giúp doanh nghiệp nâng cao khả năng cạnh tranh trong ngành {data.get('industry', 'N/A')} và thích ứng tốt hơn với môi trường kinh doanh năng động tại {data.get('market', 'thị trường')}.")
+        impact_para.add_run(f"\n\nTổng thể, điều này sẽ giúp doanh nghiệp nâng cao khả năng cạnh tranh trong ngành {data.get('industry', 'N/A')} và thích ứng tốt hơn với môi trường kinh doanh năng động tại {vietnamese_market}.")
     else:
         # Fallback to more generic but still dynamic text
-        impact_para.add_run(f"Việc áp dụng các insights từ nghiên cứu này sẽ giúp doanh nghiệp nâng cao vị thế cạnh tranh trong ngành {data.get('industry', 'N/A')}, tăng cường khả năng thích ứng với thay đổi thị trường tại {data.get('market', 'thị trường')}, và tối ưu hóa hiệu quả kinh doanh. Dự kiến sẽ cải thiện đáng kể khả năng ra quyết định chiến lược và tạo ra lợi thế cạnh tranh bền vững.")
+        impact_para.add_run(f"Việc áp dụng các insights từ nghiên cứu này sẽ giúp doanh nghiệp nâng cao vị thế cạnh tranh trong ngành {data.get('industry', 'N/A')}, tăng cường khả năng thích ứng với thay đổi thị trường tại {vietnamese_market}, và tối ưu hóa hiệu quả kinh doanh. Dự kiến sẽ cải thiện đáng kể khả năng ra quyết định chiến lược và tạo ra lợi thế cạnh tranh bền vững.")
     
     impact_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     set_paragraph_font(impact_para)
@@ -816,6 +889,34 @@ def create_comprehensive_word_report(json_file: str, output_file: str = None, us
             category_heading = doc.add_heading(f"{cat_idx}. {category_name}", level=2)
             set_paragraph_font(category_heading, font_size=14)
             
+            # Check if this is Layer 3 comprehensive category analysis
+            layer3_comprehensive_category = category.get('layer3_comprehensive_category', {})
+            if layer3_comprehensive_category:
+                print(f"    🎯 Layer 3 Comprehensive Category Analysis: {category_name}")
+                
+                # Display Layer 3 comprehensive analysis for entire category
+                comprehensive_content = layer3_comprehensive_category.get('comprehensive_content', '')
+                if comprehensive_content:
+                    # Clean up content
+                    cleaned_content = clean_comprehensive_content(comprehensive_content).strip()
+                    
+                    # Display analysis content directly without headers
+                    comp_para = doc.add_paragraph(cleaned_content)
+                    comp_para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                    set_paragraph_font(comp_para)
+                
+                # Timestamp only
+                timestamp = layer3_comprehensive_category.get('analysis_timestamp', '')
+                if timestamp:
+                    time_para = doc.add_paragraph()
+                    time_para.add_run(f"⏰ Phân tích: {timestamp}").italic = True
+                    time_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    set_paragraph_font(time_para, font_size=9)
+                
+                # Skip individual question processing for Layer 3 mode
+                continue
+            
+            # Layer 4 mode: Process individual questions (existing logic)
             for q_idx, question in enumerate(category.get('questions', []), 1):
                 main_question = question.get('main_question', '')
                 

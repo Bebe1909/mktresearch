@@ -68,11 +68,25 @@ class ExcelToStructuredJSON:
                 if layer_header_row is not None:
                     print(f"📍 Tìm thấy header layers ở dòng {layer_header_row}")
                     
-                    # Phân tích dữ liệu từ dòng tiếp theo
-                    current_layer1 = None
-                    current_layer2 = None
-                    current_layer3 = None
+                    # Get header row to determine number of layers dynamically
+                    header_row = df.iloc[layer_header_row]
+                    layer_columns = []
                     
+                    # Find all Layer columns dynamically
+                    for col_idx, col_val in enumerate(header_row):
+                        if pd.notna(col_val) and "Layer" in str(col_val):
+                            layer_columns.append(col_idx)
+                    
+                    print(f"🔍 Detected {len(layer_columns)} layer columns: {[f'Layer {i+1}' for i in range(len(layer_columns))]}")
+                    
+                    if len(layer_columns) < 3:
+                        print("⚠️ Warning: Need at least 3 layers (Layer 1, Layer 2, Layer 3) for proper structure")
+                        return False
+                    
+                    # Dynamic layer tracking
+                    layer_stack = [None] * len(layer_columns)  # Track current value at each layer level
+                    
+                    # Phân tích dữ liệu từ dòng tiếp theo
                     for idx in range(layer_header_row + 1, len(df)):
                         row = df.iloc[idx]
                         
@@ -80,48 +94,51 @@ class ExcelToStructuredJSON:
                         if row.isna().all():
                             continue
                         
-                        # Lấy giá trị các cột
-                        col_values = []
-                        for col in df.columns:
-                            val = row[col]
-                            col_values.append(str(val) if pd.notna(val) else None)
+                        # Get values for all layer columns
+                        layer_values = []
+                        for col_idx in layer_columns:
+                            if col_idx < len(row):
+                                val = row.iloc[col_idx]
+                                layer_values.append(str(val) if pd.notna(val) and str(val) != 'None' else None)
+                            else:
+                                layer_values.append(None)
                         
-                        # Xử lý layer 1 (cột 1)
-                        if col_values[1] and col_values[1] != 'None':  # Layer 1
-                            current_layer1 = {
-                                "name": col_values[1],
-                                "categories": []
-                            }
-                            result["layers"].append(current_layer1)
-                            current_layer2 = None
-                            current_layer3 = None
-                        
-                        # Xử lý layer 2 (cột 2)
-                        if col_values[2] and col_values[2] != 'None' and current_layer1:  # Layer 2
-                            current_layer2 = {
-                                "name": col_values[2],
-                                "questions": []
-                            }
-                            current_layer1["categories"].append(current_layer2)
-                            current_layer3 = None
-                        
-                        # Xử lý layer 3 và 4 (câu hỏi và chi tiết)
-                        if current_layer2:
-                            layer3_val = col_values[3] if len(col_values) > 3 else None
-                            layer4_val = col_values[4] if len(col_values) > 4 else None
-                            
-                            if layer3_val and layer3_val != 'None':
-                                question = {
-                                    "main_question": layer3_val,
-                                    "sub_questions": []
-                                }
-                                if layer4_val and layer4_val != 'None':
-                                    question["sub_questions"].append(layer4_val)
-                                current_layer2["questions"].append(question)
-                                current_layer3 = question
-                            elif layer4_val and layer4_val != 'None' and current_layer3:
-                                # Thêm sub-question vào câu hỏi hiện tại
-                                current_layer3["sub_questions"].append(layer4_val)
+                        # Process layers dynamically
+                        for level, value in enumerate(layer_values):
+                            if value:  # Non-empty value at this level
+                                # Reset deeper levels
+                                for deeper_level in range(level + 1, len(layer_stack)):
+                                    layer_stack[deeper_level] = None
+                                
+                                if level == 0:  # Layer 1 - Top level framework
+                                    current_layer1 = {
+                                        "name": value,
+                                        "categories": []
+                                    }
+                                    result["layers"].append(current_layer1)
+                                    layer_stack[0] = current_layer1
+                                    
+                                elif level == 1 and layer_stack[0]:  # Layer 2 - Categories
+                                    current_layer2 = {
+                                        "name": value,
+                                        "questions": []
+                                    }
+                                    layer_stack[0]["categories"].append(current_layer2)
+                                    layer_stack[1] = current_layer2
+                                    
+                                elif level == 2 and layer_stack[1]:  # Layer 3 - Main questions
+                                    question = {
+                                        "main_question": value,
+                                        "sub_questions": []
+                                    }
+                                    layer_stack[1]["questions"].append(question)
+                                    layer_stack[2] = question
+                                    
+                                elif level >= 3 and layer_stack[2]:  # Layer 4+ - Sub-questions or deeper analysis
+                                    # Add as sub-question to current main question
+                                    layer_stack[2]["sub_questions"].append(value)
+                                
+                                break  # Process only the first non-empty value in this row
             
             # Đảm bảo folder output tồn tại
             os.makedirs(os.path.dirname(json_path), exist_ok=True)

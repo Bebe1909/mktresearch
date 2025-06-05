@@ -197,6 +197,57 @@ CÂU HỎI CẦN TRẢ LỜI: "{main_question}"
         
         return template
 
+    def create_layer3_comprehensive_category_prompt(self, layer1: str, layer2: str, all_questions: list, purpose: str) -> str:
+        """Tạo prompt để phân tích comprehensive cho toàn bộ category (Layer 3 mode)"""
+        
+        # Get Vietnamese market name for Vietnamese reports
+        vietnamese_market = self.get_vietnamese_market_name(self.market)
+        
+        questions_text = "\n".join([f"- {q}" for q in all_questions])
+        
+        template = f'''Bạn là chuyên gia phân tích thị trường cho ngành "{self.industry}" tại thị trường "{vietnamese_market}".
+
+NGỮ CẢNH: {layer1} > {layer2}
+MỤC ĐÍCH NGHIÊN CỨU: "{purpose}"
+
+CÁC CÂU HỎI CẦN TRẢ LỜI TOÀN DIỆN:
+{questions_text}
+
+🎯 **NHIỆM VỤ:** Viết phân tích comprehensive cho toàn bộ category "{layer2}" bằng cách trả lời tích hợp TẤT CẢ câu hỏi trên.
+
+**BẮT ĐẦU NGAY VỚI PHÂN TÍCH** - KHÔNG có câu giới thiệu hay mở đầu, đi thẳng vào tình hình hiện tại.
+
+**CÁCH VIẾT - FLOW TỰ NHIÊN:**
+
+Viết một phân tích dạng văn xuôi, liền mạch theo logic:
+1. **Tình hình hiện tại** (150-200 từ): Bắt đầu ngay với overview về {layer2} trong ngành {self.industry}
+2. **Phân tích chi tiết** (200-250 từ): Deep dive các factors chính, data cụ thể 
+3. **Tác động và xu hướng** (150-200 từ): Impacts, trends, opportunities 
+4. **Khuyến nghị chiến lược** (100-150 từ): Actionable insights và recommendations
+
+**YÊU CẦU:**
+- BẮT ĐẦU NGAY với phân tích (VD: "Tình hình {layer2} hiện tại...", "Trong bối cảnh {layer2}...")
+- TRẢ LỜI HẾT TẤT CẢ các câu hỏi được liệt kê
+- VIẾT liền mạch như một bài phân tích chuyên nghiệp
+- SỬ DỤNG data và examples cụ thể từ {vietnamese_market}
+- TRÁNH section headers, viết dạng essay flow tự nhiên
+- KẾT HỢP insights từ tất cả câu hỏi thành một comprehensive view
+
+**PHONG CÁCH:**
+- Professional analysis writing
+- Smooth transitions giữa các ý
+- Evidence-based với concrete examples
+- Forward-looking perspective
+
+**VÍ DỤ BẮT ĐẦU TỐT:**
+"Tình hình {layer2} trong ngành {self.industry} tại {vietnamese_market} hiện đang..."
+"Bối cảnh {layer2} cho thấy..."
+"Môi trường {layer2} đang trải qua..."
+
+Tạo một phân tích comprehensive trả lời hết các câu hỏi trên để hiểu toàn diện về {layer2} impact lên ngành {self.industry}.'''
+        
+        return template
+
     def create_layer4_enhancement_prompt(self, layer1: str, layer2: str, main_question: str, sub_question: str, layer3_content: str, purpose: str) -> str:
         """Tạo prompt để enhance specific section từ Layer 3 lên Layer 4"""
         template = f'''As a master prompt engineer, I need to enhance a specific section of an existing market research report from Layer 3 to Layer 4 standard for: "{self.industry}" in market: "{self.market}". 
@@ -217,9 +268,12 @@ Create a prompt for GPT to provide deep, detailed analysis specifically for the 
     def create_layer4_comprehensive_report_prompt(self, layer1: str, layer2: str, main_question: str, sub_questions: list, layer3_content: str, purpose: str) -> str:
         """Tạo prompt để tạo báo cáo Layer 4 tổng hợp - DIRECT CONTENT, NO INTRO"""
         
+        # Get Vietnamese market name for Vietnamese reports
+        vietnamese_market = self.get_vietnamese_market_name(self.market)
+        
         sub_questions_text = "\n".join([f"- {sq}" for sq in sub_questions])
         
-        template = f'''Bạn là chuyên gia phân tích thị trường cho ngành "{self.industry}" tại thị trường "{self.market}".
+        template = f'''Bạn là chuyên gia phân tích thị trường cho ngành "{self.industry}" tại thị trường "{vietnamese_market}".
 
 NGỮ CẢNH: {layer1} > {layer2}
 CÂU HỎI CHÍNH CẦN TRẢ LỜI: "{main_question}"
@@ -248,7 +302,7 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
 - KHÔNG sử dụng section headers hay bullet points
 - KHÔNG có câu giới thiệu hay mở đầu
 - VIẾT liền mạch như một bài phân tích chuyên nghiệp
-- Use real {self.market} market data và case studies
+- Use real {vietnamese_market} market data và case studies
 - BE SPECIFIC - tránh generalities
 - Total: 550-700 từ
 
@@ -550,12 +604,13 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         print(f"💾 Đã cập nhật Layer 4 comprehensive report vào: {output_file}")
         return output_file
 
-    def run_layer3_research(self, structured_data: dict, topic: str, testing_mode: bool = False) -> dict:
+    def run_layer3_research(self, structured_data: dict, topic: str, testing_mode: bool = False, analysis_level: str = "Layer 4 Analysis") -> dict:
         """Main research execution with comprehensive error handling and reference tracking"""
         
         print(f"🎯 Bắt đầu nghiên cứu thị trường Layer 3: {topic}")
         print(f"📊 Thị trường: {self.market}")
         print(f"🤖 API: OpenAI {self.model}")
+        print(f"🔬 Analysis Level: {analysis_level}")
         
         # Reset reference tracking for new research
         self.reference_tracker = {}
@@ -572,6 +627,7 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
                 'model_used': self.model,
                 'api_provider': 'OpenAI',
                 'purpose': purpose,
+                'analysis_level': analysis_level,
                 'research_timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
                 'testing_mode': testing_mode
             },
@@ -594,6 +650,122 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         print("=" * 60)
         
         processed_questions = 0
+        
+        # Branch logic based on analysis level
+        if analysis_level == "Layer 3 Analysis":
+            return self._run_layer3_category_analysis(structured_data, purpose, result, testing_mode)
+        else:
+            return self._run_layer4_detailed_analysis(structured_data, purpose, result, testing_mode)
+    
+    def _run_layer3_category_analysis(self, structured_data: dict, purpose: str, result: dict, testing_mode: bool) -> dict:
+        """Layer 3 Analysis Mode: Comprehensive analysis per category"""
+        
+        print("🎯 Chế độ Layer 3: Phân tích comprehensive theo category")
+        processed_categories = 0
+        
+        for layer in structured_data.get('layers', []):
+            layer_name = layer.get('name', '')
+            layer_result = {
+                'layer_name': layer_name,
+                'categories': []
+            }
+            
+            print(f"🔥 Đang xử lý Layer: {layer_name}")
+            
+            for category in layer.get('categories', []):
+                category_name = category.get('name', '')
+                processed_categories += 1
+                
+                print(f"📋 Category [{processed_categories}]: {category_name}")
+                
+                questions = category.get('questions', [])
+                if testing_mode:
+                    questions = questions[:2]  # Limit questions in test mode
+                
+                # Collect all main questions for this category
+                all_main_questions = [q.get('main_question', '') for q in questions]
+                
+                print(f"    🔄 Gom {len(all_main_questions)} questions cho comprehensive analysis...")
+                
+                # Create Layer 3 comprehensive analysis for entire category
+                comprehensive_prompt = self.create_layer3_comprehensive_category_prompt(
+                    layer_name, category_name, all_main_questions, purpose
+                )
+                
+                print(f"    🔍 Phân tích comprehensive cho category {category_name}...")
+                comprehensive_content = self.call_openai_api(comprehensive_prompt)
+                
+                # Store individual questions for reference (minimal processing)
+                category_questions = []
+                for question_data in questions:
+                    question_result = {
+                        'main_question': question_data.get('main_question', ''),
+                        'sub_questions': question_data.get('sub_questions', []),
+                        'layer3_content': None  # Not processed individually in Layer 3 mode
+                    }
+                    category_questions.append(question_result)
+                
+                # Create category result with comprehensive analysis
+                category_result = {
+                    'category_name': category_name,
+                    'questions': category_questions,
+                    'layer3_comprehensive_category': {
+                        'comprehensive_content': comprehensive_content,
+                        'analysis_timestamp': time.strftime("%Y-%m-%d %H:%M:%S"),
+                        'questions_analyzed': all_main_questions,
+                        'analysis_mode': 'Layer 3 Category Comprehensive'
+                    }
+                }
+                
+                layer_result['categories'].append(category_result)
+                print(f"    ✅ Hoàn thành comprehensive analysis cho {category_name}!")
+                
+                # Add delay to avoid rate limiting
+                time.sleep(self.delay_seconds)
+                
+            result['research_results'].append(layer_result)
+        
+        # Final statistics
+        print("=" * 60)
+        print("🎉 Hoàn thành Layer 3 Category Analysis!")
+        print(f"📊 Đã phân tích: {processed_categories} categories")
+        
+        # Add tracked references to result
+        top_references = self.get_top_references(10)
+        result['tracked_references'] = top_references
+        
+        print(f"📚 Tracked {len(self.tracked_sources)} unique sources")
+        if top_references:
+            print("🔝 Top references:")
+            for source, count in top_references[:5]:
+                print(f"   • {source} ({count}x)")
+        
+        # Add research statistics
+        result['research_statistics'] = {
+            'total_categories_processed': processed_categories,
+            'total_sources_tracked': len(self.tracked_sources),
+            'total_api_calls': processed_categories,  # One call per category
+            'processing_time_estimate': f"{processed_categories * self.delay_seconds / 60:.1f} minutes",
+            'analysis_mode': 'Layer 3 Category Comprehensive'
+        }
+        
+        return result
+    
+    def _run_layer4_detailed_analysis(self, structured_data: dict, purpose: str, result: dict, testing_mode: bool) -> dict:
+        """Layer 4 Analysis Mode: Detailed analysis per main question (current behavior)"""
+        
+        print("🎯 Chế độ Layer 4: Phân tích chi tiết theo main question")
+        processed_questions = 0
+        total_questions = 0
+        
+        # Count total questions
+        for layer in structured_data.get('layers', []):
+            for category in layer.get('categories', []):
+                questions = category.get('questions', [])
+                if testing_mode:
+                    total_questions += min(len(questions), 2)
+                else:
+                    total_questions += len(questions)
         
         for layer in structured_data.get('layers', []):
             layer_name = layer.get('name', '')
@@ -682,7 +854,7 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
             result['research_results'].append(layer_result)
         
         print("=" * 60)
-        print("🎉 Hoàn thành nghiên cứu thị trường Layer 3!")
+        print("🎉 Hoàn thành nghiên cứu thị trường Layer 4!")
         print(f"📊 Đã xử lý: {processed_questions} main questions")
         
         # Add tracked references to result
@@ -700,7 +872,77 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
             'total_questions_processed': processed_questions,
             'total_sources_tracked': len(self.tracked_sources),
             'total_api_calls': processed_questions * 2,  # Estimate including Layer 4
-            'processing_time_estimate': f"{processed_questions * self.delay_seconds / 60:.1f} minutes"
+            'processing_time_estimate': f"{processed_questions * self.delay_seconds / 60:.1f} minutes",
+            'analysis_mode': 'Layer 4 Detailed per Question'
         }
         
-        return result 
+        return result
+
+    def get_vietnamese_market_name(self, market: str) -> str:
+        """Translate market name to Vietnamese for consistent Vietnamese reports"""
+        market_translations = {
+            "🇺🇸 United States": "🇺🇸 Hoa Kỳ",
+            "🇨🇳 China": "🇨🇳 Trung Quốc", 
+            "🇯🇵 Japan": "🇯🇵 Nhật Bản",
+            "🇰🇷 South Korea": "🇰🇷 Hàn Quốc",
+            "🇹🇭 Thailand": "🇹🇭 Thái Lan",
+            "🇸🇬 Singapore": "🇸🇬 Singapore",
+            "🇲🇾 Malaysia": "🇲🇾 Malaysia",
+            "🇮🇩 Indonesia": "🇮🇩 Indonesia",
+            "🇵🇭 Philippines": "🇵🇭 Philippines",
+            "🇬🇧 United Kingdom": "🇬🇧 Vương quốc Anh",
+            "🇩🇪 Germany": "🇩🇪 Đức",
+            "🇫🇷 France": "🇫🇷 Pháp",
+            "🇮🇹 Italy": "🇮🇹 Ý",
+            "🇪🇸 Spain": "🇪🇸 Tây Ban Nha",
+            "🇨🇦 Canada": "🇨🇦 Canada",
+            "🇦🇺 Australia": "🇦🇺 Úc",
+            "🇳🇿 New Zealand": "🇳🇿 New Zealand",
+            "🇧🇷 Brazil": "🇧🇷 Brazil",
+            "🇲🇽 Mexico": "🇲🇽 Mexico",
+            "🇮🇳 India": "🇮🇳 Ấn Độ",
+            "🇷🇺 Russia": "🇷🇺 Nga",
+            "🇿🇦 South Africa": "🇿🇦 Nam Phi",
+            "🇪🇬 Egypt": "🇪🇬 Ai Cập",
+            "🇦🇪 UAE": "🇦🇪 UAE",
+            "🇸🇦 Saudi Arabia": "🇸🇦 Ả Rập Saudi",
+            "🇹🇷 Turkey": "🇹🇷 Thổ Nhĩ Kỳ",
+            "🇳🇱 Netherlands": "🇳🇱 Hà Lan",
+            "🇸🇪 Sweden": "🇸🇪 Thụy Điển",
+            "🇳🇴 Norway": "🇳🇴 Na Uy",
+            "🇩🇰 Denmark": "🇩🇰 Đan Mạch",
+            "🇫🇮 Finland": "🇫🇮 Phần Lan",
+            "🇨🇭 Switzerland": "🇨🇭 Thụy Sĩ",
+            "🇦🇹 Austria": "🇦🇹 Áo",
+            "🇧🇪 Belgium": "🇧🇪 Bỉ",
+            "🇵🇱 Poland": "🇵🇱 Ba Lan",
+            "🇨🇿 Czech Republic": "🇨🇿 Cộng hòa Séc",
+            "🇭🇺 Hungary": "🇭🇺 Hungary",
+            "🇬🇷 Greece": "🇬🇷 Hy Lạp",
+            "🇵🇹 Portugal": "🇵🇹 Bồ Đào Nha",
+            "🇮🇪 Ireland": "🇮🇪 Ireland",
+            "🇮🇱 Israel": "🇮🇱 Israel",
+            "🇭🇰 Hong Kong": "🇭🇰 Hồng Kông",
+            "🇹🇼 Taiwan": "🇹🇼 Đài Loan",
+            "🇦🇷 Argentina": "🇦🇷 Argentina",
+            "🇨🇱 Chile": "🇨🇱 Chile",
+            "🇨🇴 Colombia": "🇨🇴 Colombia",
+            "🇵🇪 Peru": "🇵🇪 Peru",
+            "🇻🇪 Venezuela": "🇻🇪 Venezuela",
+            "🇪🇨 Ecuador": "🇪🇨 Ecuador",
+            "🇺🇾 Uruguay": "🇺🇾 Uruguay",
+            "🇧🇴 Bolivia": "🇧🇴 Bolivia",
+            "🇵🇾 Paraguay": "🇵🇾 Paraguay",
+            "🇳🇬 Nigeria": "🇳🇬 Nigeria",
+            "🇰🇪 Kenya": "🇰🇪 Kenya",
+            "🇬🇭 Ghana": "🇬🇭 Ghana",
+            "🇪🇹 Ethiopia": "🇪🇹 Ethiopia",
+            "🇺🇬 Uganda": "🇺🇬 Uganda",
+            "🇹🇿 Tanzania": "🇹🇿 Tanzania",
+            "🇿🇼 Zimbabwe": "🇿🇼 Zimbabwe",
+            "🌏 Southeast Asia": "🌏 Đông Nam Á",
+            "🌍 Asia-Pacific": "🌍 Châu Á - Thái Bình Dương",
+            "🌎 Global Market": "🌎 Thị trường Toàn cầu"
+        }
+        
+        return market_translations.get(market, market) 

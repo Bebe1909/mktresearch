@@ -196,7 +196,8 @@ def validate_excel_template(file_path):
 
 def count_questions_in_excel(df):
     """
-    Count total number of questions (Layer 3) and sub-questions (Layer 4) in Excel template
+    Count total number of questions (Layer 3) and sub-questions (Layer 4+) in Excel template
+    Supports dynamic number of layers (Layer 5, 6, etc.)
     Returns: (main_question_count, sub_question_count)
     """
     main_question_count = 0
@@ -204,15 +205,31 @@ def count_questions_in_excel(df):
     
     # Find layer header row
     layer_header_row = None
+    layer_columns = []
+    
     for idx, row in df.iterrows():
-        if any("Layer 1" in str(cell) for cell in row if pd.notna(cell)):
+        if any("Layer" in str(cell) for cell in row if pd.notna(cell)):
             layer_header_row = idx
+            # Detect all layer columns dynamically
+            for col_idx, col_val in enumerate(row):
+                if pd.notna(col_val) and "Layer" in str(col_val):
+                    layer_columns.append(col_idx)
             break
     
-    if layer_header_row is None:
+    if layer_header_row is None or len(layer_columns) < 3:
         return 0, 0
     
-    # Count questions in Layer 3 column (usually column 3) and sub-questions in Layer 4
+    # Debug information
+    print(f"🔍 DEBUG: Found {len(layer_columns)} layers at columns {layer_columns}")
+    
+    # Map layer positions for counting
+    layer3_col = layer_columns[2] if len(layer_columns) > 2 else None  # Layer 3 (main questions)
+    layer4_plus_cols = layer_columns[3:] if len(layer_columns) > 3 else []  # Layer 4+ (sub-questions)
+    
+    print(f"🔍 DEBUG: Layer 3 column: {layer3_col}, Layer 4+ columns: {layer4_plus_cols}")
+    
+    # Count questions with more detailed logging
+    question_details = []
     try:
         for idx in range(layer_header_row + 1, len(df)):
             row = df.iloc[idx]
@@ -221,30 +238,100 @@ def count_questions_in_excel(df):
             if row.isna().all():
                 continue
             
-            # Check Layer 3 column (index 3, assuming 0-based indexing)
-            if len(row) > 3:
-                layer3_val = row.iloc[3] if pd.notna(row.iloc[3]) else None
+            # Check Layer 3 column (main questions)
+            if layer3_col is not None and layer3_col < len(row):
+                layer3_val = row.iloc[layer3_col] if pd.notna(row.iloc[layer3_col]) else None
                 if layer3_val and str(layer3_val).strip() and str(layer3_val) != 'None':
                     main_question_count += 1
                     
-                    # Check if this question has sub-questions (Layer 4 column)
-                    if len(row) > 4:
-                        layer4_val = row.iloc[4] if pd.notna(row.iloc[4]) else None
-                        if layer4_val and str(layer4_val).strip() and str(layer4_val) != 'None':
-                            # Count number of sub-questions (split by common delimiters)
-                            sub_q_text = str(layer4_val)
-                            # Split by common patterns: newlines, semicolons, bullet points
-                            import re
-                            sub_questions = re.split(r'[\n;•\-]\s*', sub_q_text)
-                            # Filter out empty strings and count actual sub-questions
-                            valid_sub_questions = [sq.strip() for sq in sub_questions if sq.strip()]
-                            if valid_sub_questions:
-                                sub_question_count += 1  # Count as 1 Layer 4 enhancement
+                    # Check Layer 4+ columns for sub-questions
+                    has_sub_questions = False
+                    total_individual_sub_questions = 0
+                    sub_question_texts = []
+                    for layer_col in layer4_plus_cols:
+                        if layer_col < len(row):
+                            layer_val = row.iloc[layer_col] if pd.notna(row.iloc[layer_col]) else None
+                            if layer_val and str(layer_val).strip() and str(layer_val) != 'None':
+                                has_sub_questions = True
+                                
+                                # Count individual sub-questions for debugging
+                                sub_q_text = str(layer_val)
+                                # Split by common patterns: newlines, semicolons, bullet points
+                                import re
+                                sub_questions_list = re.split(r'[\n;•\-]\s*', sub_q_text)
+                                # Filter out empty strings and count actual sub-questions
+                                valid_sub_questions = [sq.strip() for sq in sub_questions_list if sq.strip()]
+                                individual_count = len(valid_sub_questions)
+                                total_individual_sub_questions += individual_count
+                                sub_question_texts.append(f"{individual_count} individual sub-questions")
+                    
+                    if has_sub_questions:
+                        sub_question_count += 1  # Count as 1 enhancement per main question with sub-questions
+                    
+                    # Store for debugging
+                    question_details.append({
+                        'row': idx,
+                        'main_question': str(layer3_val)[:50] + "...",
+                        'has_sub_questions': has_sub_questions,
+                        'individual_sub_question_count': total_individual_sub_questions,
+                        'sub_question_preview': sub_question_texts[:2]  # First 2 sub-questions preview
+                    })
+                        
     except Exception as e:
         print(f"Error counting questions: {e}")
         return 0, 0
     
+    # Debug output
+    total_individual_sub_questions = sum(detail['individual_sub_question_count'] for detail in question_details)
+    print(f"🔍 DEBUG: Final counts - Main questions: {main_question_count}, Layer 4 enhancements: {sub_question_count}")
+    print(f"🔍 DEBUG: Total individual sub-questions across all main questions: {total_individual_sub_questions}")
+    print(f"🔍 DEBUG: Sample questions:")
+    for i, detail in enumerate(question_details[:5]):  # Show first 5
+        print(f"  {i+1}. Row {detail['row']}: {detail['main_question']} | Has sub-questions: {detail['has_sub_questions']}")
+        if detail['sub_question_preview']:
+            print(f"     Sub-questions preview: {detail['sub_question_preview']} | Individual count: {detail['individual_sub_question_count']}")
+    
     return main_question_count, sub_question_count
+
+def calculate_dynamic_cost(question_count, sub_question_count, analysis_level="Layer 4 Analysis"):
+    """
+    Calculate cost dynamically based on analysis level choice
+    
+    Args:
+        question_count: Number of main questions (Layer 3)
+        sub_question_count: Number of sub-questions (Layer 4)
+        analysis_level: "Layer 3 Analysis" or "Layer 4 Analysis"
+    
+    Returns:
+        tuple: (total_cost, layer3_cost, layer4_cost, category_count_estimate)
+    """
+    
+    if analysis_level == "Layer 3 Analysis":
+        # Layer 3 mode: Cost based on categories, not individual questions
+        # Estimate categories (typically 4-8 categories per framework)
+        category_count_estimate = max(2, min(8, question_count // 3))  # Rough estimate
+        
+        # Cost per category analysis (more expensive per unit but fewer units)
+        if category_count_estimate <= 3:
+            category_cost = 0.08  # $0.08 per category
+        elif category_count_estimate <= 6:
+            category_cost = 0.06  # $0.06 per category  
+        else:
+            category_cost = 0.05  # $0.05 per category
+        
+        layer3_cost = round(category_count_estimate * category_cost, 2)
+        layer4_cost = 0  # No Layer 4 in Layer 3 mode
+        total_cost = layer3_cost
+        
+        return total_cost, layer3_cost, layer4_cost, category_count_estimate
+    
+    else:
+        # Layer 4 mode: Original calculation method
+        layer3_cost = estimate_research_cost(question_count)
+        layer4_cost = sub_question_count * 0.05  # $0.05 per Layer 4 enhancement
+        total_cost = layer3_cost + layer4_cost
+        
+        return total_cost, layer3_cost, layer4_cost, 0
 
 def estimate_research_cost(question_count):
     """
@@ -263,11 +350,8 @@ def estimate_research_cost(question_count):
         # For very large templates, increase cost per question
         return round(question_count * 0.04, 2)
 
-def display_cost_warning(question_count, total_estimated_cost):
-    """Display cost warning based on question count and total cost including Layer 4"""
-    # Calculate Layer 3 and Layer 4 breakdown for display
-    layer3_cost = estimate_research_cost(question_count)
-    layer4_cost = total_estimated_cost - layer3_cost
+def display_cost_warning(question_count, total_estimated_cost, analysis_level="Layer 4 Analysis", layer3_cost=0, layer4_cost=0, category_count=0):
+    """Display cost warning with analysis level breakdown"""
     
     if total_estimated_cost <= 0.15:
         st.info(f"💰 Total Cost: ${total_estimated_cost:.2f} ({question_count} questions)")
@@ -281,10 +365,18 @@ def display_cost_warning(question_count, total_estimated_cost):
         st.error(f"🔴 WARNING: Total Cost ${total_estimated_cost:.2f} ({question_count} questions) - Extremely Expensive!")
         st.error("💡 Recommendation: Split into multiple smaller research projects")
     
-    # Show breakdown if there are Layer 4 costs
-    if layer4_cost > 0:
-        st.caption(f"📊 Breakdown: Layer 3 (${layer3_cost:.2f}) + Layer 4 (${layer4_cost:.2f}) = ${total_estimated_cost:.2f}")
-        st.caption(f"ℹ️ Detected {int(layer4_cost / 0.05)} questions with sub-questions → auto Layer 4 reports")
+    # Show breakdown based on analysis level
+    if analysis_level == "Layer 3 Analysis":
+        if category_count > 0:
+            st.caption(f"📊 Breakdown: {category_count} categories × ${layer3_cost/category_count:.2f} = ${total_estimated_cost:.2f}")
+            st.caption(f"ℹ️ Layer 3 Mode: Comprehensive analysis per category (no sub-questions)")
+    else:
+        # Layer 4 breakdown
+        if layer4_cost > 0:
+            st.caption(f"📊 Breakdown: Layer 3 (${layer3_cost:.2f}) + Layer 4 (${layer4_cost:.2f}) = ${total_estimated_cost:.2f}")
+            st.caption(f"ℹ️ Detected {int(layer4_cost / 0.05)} questions with sub-questions → auto Layer 4 reports")
+        else:
+            st.caption(f"📊 Layer 4 Mode: ${total_estimated_cost:.2f} for {question_count} individual question analysis")
 
 def proceed_with_research():
     """Start research immediately for low-cost cases"""
@@ -300,34 +392,21 @@ def show_research_page():
         st.error("⚠️ Please configure your OpenAI API key in Settings first!")
         return
     
-    # Template download section
-    st.markdown("""
-    <div class="download-section">
-        <h4>📁 Excel Template</h4>
-        <p>Download our template or upload your customized version</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
+    # Simple template download
     template_path = 'input/market research template.xlsx'
     if os.path.exists(template_path):
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            with open(template_path, 'rb') as template_file:
-                st.download_button(
-                    label="📥 Download Template",
-                    data=template_file.read(),
-                    file_name="market_research_template.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                )
-        with col2:
-            st.info("💡 **Template Structure:** Download → Customize → Upload back here")
+        with open(template_path, 'rb') as template_file:
+            st.download_button(
+                label="📥 Download Excel Template",
+                data=template_file.read(),
+                file_name="market_research_template.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
     
-    st.markdown("---")
-    
-    # Excel file upload with IMMEDIATE validation (outside form)
-    st.subheader("📁 Excel Framework Upload")
+    # Excel file upload with IMMEDIATE validation
     uploaded_file = st.file_uploader(
-        "Upload your research framework (optional)",
+        "📁 Upload custom Excel framework (optional)",
         type=['xlsx'],
         help="Upload customized template or leave empty to use default"
     )
@@ -349,22 +428,29 @@ def show_research_page():
             
             if is_valid:
                 st.success(message)
-                display_cost_warning(question_count, total_estimated_cost)
+                st.info("💡 **Cost will be calculated dynamically based on your Analysis Level choice below**")
                 
-                # Show breakdown details
-                layer3_cost = estimate_research_cost(question_count)
-                layer4_cost = total_estimated_cost - layer3_cost
+                # Store template data in session state for cost preview
+                st.session_state['template_data'] = {
+                    'question_count': question_count,
+                    'sub_question_count': sub_question_count,
+                    'file_type': 'uploaded'
+                }
                 
+                # Show basic breakdown details  
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("📊 Main Questions", question_count)
                 with col2:
-                    st.metric("🎯 Layer 4 Reports", int(layer4_cost / 0.05) if layer4_cost > 0 else 0)
+                    st.metric("🎯 Layer 4 Enhancements", sub_question_count, help="Number of main questions that have sub-questions")
                 with col3:
-                    st.metric("💰 Total Cost", f"${total_estimated_cost:.2f}")
+                    st.metric("📋 Template Valid", "✅")
                     
             else:
                 st.error(message)
+                # Clear any previous template data on validation failure
+                if 'template_data' in st.session_state:
+                    del st.session_state['template_data']
                 
             # Clean up temp file
             if os.path.exists(temp_path):
@@ -373,8 +459,7 @@ def show_research_page():
         except Exception as e:
             st.error(f"❌ Error processing file: {str(e)}")
     else:
-        # Show default template info when no file uploaded
-        st.markdown("#### 📋 Default Template Information")
+        # Use default template - simple and clean
         default_template_path = 'input/market research template.xlsx'
         
         if os.path.exists(default_template_path):
@@ -383,36 +468,32 @@ def show_research_page():
                 is_valid, message, question_count, sub_question_count, total_estimated_cost = validate_excel_template(default_template_path)
                 
                 if is_valid:
-                    st.info("🎯 Using default research framework")
-                    display_cost_warning(question_count, total_estimated_cost)
-                    
-                    # Show breakdown details for default template
-                    layer3_cost = estimate_research_cost(question_count)
-                    layer4_cost = total_estimated_cost - layer3_cost
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("📊 Main Questions", question_count)
-                    with col2:
-                        st.metric("🎯 Layer 4 Reports", int(layer4_cost / 0.05) if layer4_cost > 0 else 0)
-                    with col3:
-                        st.metric("💰 Total Cost", f"${total_estimated_cost:.2f}")
-                        
+                    # Store default template data in session state
+                    st.session_state['template_data'] = {
+                        'question_count': question_count,
+                        'sub_question_count': sub_question_count,
+                        'file_type': 'default'
+                    }
                 else:
                     st.warning("⚠️ Default template has issues. Please upload a custom file.")
                     
             except Exception as e:
-                st.warning(f"⚠️ Could not analyze default template: {str(e)}")
-                # Fallback to estimated values
+                # Fallback to estimated values and store in session state
                 estimated_questions = 22
-                estimated_cost = estimate_research_cost(estimated_questions)
-                st.info(f"💰 Estimated cost for default template: ~${estimated_cost:.2f} ({estimated_questions} questions)")
+                estimated_sub_questions = 5
+                st.session_state['template_data'] = {
+                    'question_count': estimated_questions,
+                    'sub_question_count': estimated_sub_questions,
+                    'file_type': 'fallback'
+                }
         else:
             st.warning("⚠️ Default template not found. Please upload a custom Excel file.")
-            # Show general estimation
-            st.info("💰 Typical research cost: $0.30-0.60 (15-30 questions)")
-    
-    st.markdown("---")
+            # Store fallback data in session state
+            st.session_state['template_data'] = {
+                'question_count': 22,
+                'sub_question_count': 5,
+                'file_type': 'fallback'
+            }
     
     # Research form
     with st.form("research_form"):
@@ -445,6 +526,21 @@ def show_research_page():
                 help="Complete: Full research report | Quick: Test with 5 questions only"
             )
         
+        # Analysis Level Selection - NEW FEATURE
+        st.markdown("---")
+        analysis_level = st.radio(
+            "📊 Analysis Level",
+            ["Layer 3 Analysis", "Layer 4 Analysis"],
+            index=1,  # Default to Layer 4 (current behavior)
+            help="Layer 3: Comprehensive analysis per category (Political, Economic...) | Layer 4: Detailed analysis per main question with sub-questions"
+        )
+        
+        # Explanation for each level
+        if analysis_level == "Layer 3 Analysis":
+            st.info("🎯 **Layer 3 Mode**: Groups all main questions by category (Political, Economic...) to create comprehensive analysis for entire categories. Sub-questions are not used.")
+        else:
+            st.info("🔍 **Layer 4 Mode**: Detailed analysis of each main question with its corresponding sub-questions.")
+        
         # Submit button
         submitted = st.form_submit_button("🚀 Start Research", use_container_width=True)
     
@@ -453,8 +549,9 @@ def show_research_page():
             st.error("Please enter a research topic!")
             return
         
-        # Validate uploaded file again before processing
+        # Validate uploaded file again before processing with dynamic cost calculation
         final_question_count = 0
+        final_sub_question_count = 0
         final_estimated_cost = 0
         
         if uploaded_file:
@@ -465,7 +562,7 @@ def show_research_page():
                 with open(temp_path, 'wb') as f:
                     f.write(uploaded_file.getbuffer())
                 
-                is_valid, error_msg, question_count, sub_question_count, total_estimated_cost = validate_excel_template(temp_path)
+                is_valid, error_msg, question_count, sub_question_count, _ = validate_excel_template(temp_path)
                 
                 if not is_valid:
                     st.error(error_msg)
@@ -473,8 +570,12 @@ def show_research_page():
                         os.remove(temp_path)
                     return
                 
+                # Use dynamic cost calculation based on analysis level
+                final_estimated_cost, layer3_cost, layer4_cost, category_count = calculate_dynamic_cost(
+                    question_count, sub_question_count, analysis_level
+                )
                 final_question_count = question_count
-                final_estimated_cost = total_estimated_cost
+                final_sub_question_count = sub_question_count
                 
                 # Clean up validation file
                 if os.path.exists(temp_path):
@@ -488,22 +589,35 @@ def show_research_page():
             default_template_path = 'input/market research template.xlsx'
             if os.path.exists(default_template_path):
                 try:
-                    is_valid, _, question_count, sub_question_count, total_estimated_cost = validate_excel_template(default_template_path)
+                    is_valid, _, question_count, sub_question_count, _ = validate_excel_template(default_template_path)
                     if is_valid:
+                        # Use dynamic cost calculation for default template too
+                        final_estimated_cost, layer3_cost, layer4_cost, category_count = calculate_dynamic_cost(
+                            question_count, sub_question_count, analysis_level
+                        )
                         final_question_count = question_count
-                        final_estimated_cost = total_estimated_cost
+                        final_sub_question_count = sub_question_count
                     else:
                         # Fallback to estimated values
                         final_question_count = 22
-                        final_estimated_cost = estimate_research_cost(final_question_count)
+                        final_sub_question_count = 5
+                        final_estimated_cost, layer3_cost, layer4_cost, category_count = calculate_dynamic_cost(
+                            final_question_count, final_sub_question_count, analysis_level
+                        )
                 except Exception:
                     # Fallback to estimated values
                     final_question_count = 22
-                    final_estimated_cost = estimate_research_cost(final_question_count)
+                    final_sub_question_count = 5
+                    final_estimated_cost, layer3_cost, layer4_cost, category_count = calculate_dynamic_cost(
+                        final_question_count, final_sub_question_count, analysis_level
+                    )
             else:
                 # Fallback to estimated values
                 final_question_count = 22
-                final_estimated_cost = estimate_research_cost(final_question_count)
+                final_sub_question_count = 5
+                final_estimated_cost, layer3_cost, layer4_cost, category_count = calculate_dynamic_cost(
+                    final_question_count, final_sub_question_count, analysis_level
+                )
         
         # Handle file processing
         if uploaded_file:
@@ -538,13 +652,20 @@ def show_research_page():
             'industry': research_topic,
             'market': market,
             'testing_mode': research_mode == "Quick Test (5 questions)",
+            'analysis_level': analysis_level,
             'api_key': OPENAI_API_KEY,
             'question_count': final_question_count,
             'estimated_cost': final_estimated_cost
         }
         
         # Cost confirmation for expensive research
-        if final_estimated_cost > 1.0:
+        # For Layer 3: also warn if high question count even with low cost
+        should_warn = (
+            final_estimated_cost > 1.0 or 
+            (analysis_level == "Layer 3 Analysis" and final_question_count > 50)
+        )
+        
+        if should_warn:
             # Show cost warning dialog
             st.session_state['show_cost_dialog'] = True
             st.rerun()
@@ -556,20 +677,7 @@ def show_research_page():
     if st.session_state.get('research_completed', False):
         st.success("🎉 Research completed successfully!")
         
-        # Show research statistics first
-        results = st.session_state.get('research_results', {})
-        stats = results.get('research_statistics', {})
-        if stats:
-            st.markdown("#### 📈 Research Statistics")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("📊 Questions Processed", stats.get('total_questions_processed', 0))
-            with col2:
-                st.metric("📚 Sources Tracked", stats.get('total_sources_tracked', 0))
-            with col3:
-                st.metric("⏱️ Processing Time", stats.get('processing_time_estimate', 'N/A'))
-        
-        # Word download button below statistics
+        # Word download button
         word_file = st.session_state.get('word_file')
         if word_file and os.path.exists(word_file):
             with open(word_file, "rb") as file:
@@ -580,14 +688,6 @@ def show_research_page():
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True
                 )
-        
-        # Button to start new research
-        if st.button("🚀 Start New Research", type="primary"):
-            # Clear research completion status
-            for key in ['research_completed', 'research_results', 'results_file', 'word_file']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
     
     # Check if research should start (after dialog confirmation)
     if st.session_state.get('start_research', False):
@@ -602,6 +702,7 @@ def show_research_page():
             industry = research_params['industry']
             market = research_params['market']
             testing_mode = research_params['testing_mode']
+            analysis_level = research_params['analysis_level']
             api_key = research_params['api_key']
             
             # Progress tracking - consistent with default file experience
@@ -621,7 +722,8 @@ def show_research_page():
                 results = researcher.run_layer3_research(
                     structured_data=structured_data,
                     topic=industry,
-                    testing_mode=testing_mode
+                    testing_mode=testing_mode,
+                    analysis_level=analysis_level
                 )
                 
                 status_text.text("💾 Saving research results...")
@@ -698,23 +800,44 @@ if st.session_state.get('show_cost_dialog', False) and not st.session_state.get(
     
     @st.dialog("⚠️ High Cost Warning")
     def show_cost_confirmation():
-        st.error("🚨 **HIGH RESEARCH COST DETECTED**")
+        # Get analysis level from pending research
+        analysis_level = pending.get('analysis_level', 'Layer 4 Analysis')
         
-        # Cost breakdown
-        st.markdown(f"""
-        ### 💰 Estimated Cost: **${cost:.2f}** 
-        
-        **📊 Details:**
-        - Total Questions: {question_count}
-        - Layer 3 + Layer 4 Fees: ${cost:.2f}
-        
-        **⚠️ This is higher than normal cost!**
-        
-        **💡 Alternative Options:**
-        - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
-        - ✂️ Split template into smaller parts  
-        - 📝 Reduce questions in Excel template
-        """)
+        if analysis_level == "Layer 3 Analysis" and cost <= 1.0:
+            # Special case for Layer 3 with high question count but low cost
+            st.warning("⚠️ **HIGH QUESTION COUNT DETECTED**")
+            st.markdown(f"""
+            ### 📊 Analysis Details: **{question_count} questions** 
+            
+            **💰 Estimated Cost: ${cost:.2f}** (Low cost due to Layer 3 efficiency)
+            
+            **ℹ️ Layer 3 Analysis Info:**
+            - Groups questions by category for comprehensive analysis
+            - Much more cost-effective than Layer 4 individual analysis
+            - {question_count} questions → ~8 category analyses
+            
+            **💡 Alternative Options:**
+            - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
+            - ✂️ Split template into smaller parts  
+            - ✅ **Proceed** - Layer 3 is efficient for large templates!
+            """)
+        else:
+            # Original high cost warning
+            st.error("🚨 **HIGH RESEARCH COST DETECTED**")
+            st.markdown(f"""
+            ### 💰 Estimated Cost: **${cost:.2f}** 
+            
+            **📊 Details:**
+            - Total Questions: {question_count}
+            - Layer 3 + Layer 4 Fees: ${cost:.2f}
+            
+            **⚠️ This is higher than normal cost!**
+            
+            **💡 Alternative Options:**
+            - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
+            - ✂️ Split template into smaller parts  
+            - 📝 Reduce questions in Excel template
+            """)
         
         st.markdown("---")
         
