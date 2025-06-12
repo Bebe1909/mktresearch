@@ -15,6 +15,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from streamlit_option_menu import option_menu
 import re
+import glob
 
 # Get OpenAI API key from multiple sources (deployment-friendly)
 def get_openai_api_key():
@@ -688,7 +689,101 @@ def show_research_page():
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                     use_container_width=True
                 )
-    
+        else:
+            # Fallback: Try to find the most recent Word file
+            try:
+                word_files = glob.glob("output/Báo_cáo_nghiên_cứu_thị_trường_*.docx")
+                if word_files:
+                    # Get the most recent file
+                    latest_word_file = max(word_files, key=os.path.getctime)
+                    st.info(f"🔍 Found recent Word file: {os.path.basename(latest_word_file)}")
+                    
+                    with open(latest_word_file, "rb") as file:
+                        st.download_button(
+                            label="📄 Download Latest Word Report",
+                            data=file.read(),
+                            file_name=os.path.basename(latest_word_file),
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            use_container_width=True
+                        )
+                else:
+                    st.error("❌ No Word files found in output directory.")
+                    
+            except Exception as e:
+                st.error(f"❌ Error finding Word file: {str(e)}")
+
+    # Cost confirmation dialog
+    if st.session_state.get('show_cost_dialog', False) and not st.session_state.get('dialog_processed', False):
+        # Get pending research data
+        pending = st.session_state.get('pending_research', {})
+        cost = pending.get('estimated_cost', 0)
+        question_count = pending.get('question_count', 0)
+        
+        @st.dialog("⚠️ High Cost Warning")
+        def show_cost_confirmation():
+            # Get analysis level from pending research
+            analysis_level = pending.get('analysis_level', 'Layer 4 Analysis')
+            
+            if analysis_level == "Layer 3 Analysis" and cost <= 1.0:
+                # Special case for Layer 3 with high question count but low cost
+                st.warning("⚠️ **HIGH QUESTION COUNT DETECTED**")
+                st.markdown(f"""
+                ### 📊 Analysis Details: **{question_count} questions** 
+                
+                **💰 Estimated Cost: ${cost:.2f}** (Low cost due to Layer 3 efficiency)
+                
+                **ℹ️ Layer 3 Analysis Info:**
+                - Groups questions by category for comprehensive analysis
+                - Much more cost-effective than Layer 4 individual analysis
+                - {question_count} questions → ~8 category analyses
+                
+                **💡 Alternative Options:**
+                - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
+                - ✂️ Split template into smaller parts  
+                - ✅ **Proceed** - Layer 3 is efficient for large templates!
+                """)
+            else:
+                # Original high cost warning
+                st.error("🚨 **HIGH RESEARCH COST DETECTED**")
+                st.markdown(f"""
+                ### 💰 Estimated Cost: **${cost:.2f}** 
+                
+                **📊 Details:**
+                - Total Questions: {question_count}
+                - Layer 3 + Layer 4 Fees: ${cost:.2f}
+                
+                **⚠️ This is higher than normal cost!**
+                
+                **💡 Alternative Options:**
+                - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
+                - ✂️ Split template into smaller parts  
+                - 📝 Reduce questions in Excel template
+                """)
+            
+            st.markdown("---")
+            
+            # Confirmation buttons
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("❌ **Cancel**", use_container_width=True):
+                    # Clear everything and reset
+                    for key in ['show_cost_dialog', 'pending_research', 'dialog_processed']:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+            
+            with col2:
+                if st.button(f"✅ **Proceed - ${cost:.2f}**", use_container_width=True, type="primary"):
+                    # Mark dialog as processed and start research
+                    st.session_state['dialog_processed'] = True
+                    st.session_state['show_cost_dialog'] = False
+                    st.session_state['start_research'] = True
+                    st.rerun()
+        
+        # Show the dialog
+        show_cost_confirmation()
+
     # Check if research should start (after dialog confirmation)
     if st.session_state.get('start_research', False):
         st.session_state['start_research'] = False
@@ -790,78 +885,6 @@ def show_research_page():
                 for key in ['pending_research', 'start_research']:
                     if key in st.session_state:
                         del st.session_state[key]
-
-# Cost confirmation dialog
-if st.session_state.get('show_cost_dialog', False) and not st.session_state.get('dialog_processed', False):
-    # Get pending research data
-    pending = st.session_state.get('pending_research', {})
-    cost = pending.get('estimated_cost', 0)
-    question_count = pending.get('question_count', 0)
-    
-    @st.dialog("⚠️ High Cost Warning")
-    def show_cost_confirmation():
-        # Get analysis level from pending research
-        analysis_level = pending.get('analysis_level', 'Layer 4 Analysis')
-        
-        if analysis_level == "Layer 3 Analysis" and cost <= 1.0:
-            # Special case for Layer 3 with high question count but low cost
-            st.warning("⚠️ **HIGH QUESTION COUNT DETECTED**")
-            st.markdown(f"""
-            ### 📊 Analysis Details: **{question_count} questions** 
-            
-            **💰 Estimated Cost: ${cost:.2f}** (Low cost due to Layer 3 efficiency)
-            
-            **ℹ️ Layer 3 Analysis Info:**
-            - Groups questions by category for comprehensive analysis
-            - Much more cost-effective than Layer 4 individual analysis
-            - {question_count} questions → ~8 category analyses
-            
-            **💡 Alternative Options:**
-            - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
-            - ✂️ Split template into smaller parts  
-            - ✅ **Proceed** - Layer 3 is efficient for large templates!
-            """)
-        else:
-            # Original high cost warning
-            st.error("🚨 **HIGH RESEARCH COST DETECTED**")
-            st.markdown(f"""
-            ### 💰 Estimated Cost: **${cost:.2f}** 
-            
-            **📊 Details:**
-            - Total Questions: {question_count}
-            - Layer 3 + Layer 4 Fees: ${cost:.2f}
-            
-            **⚠️ This is higher than normal cost!**
-            
-            **💡 Alternative Options:**
-            - 🔄 Choose "Quick Test (5 questions)" → Only $0.15
-            - ✂️ Split template into smaller parts  
-            - 📝 Reduce questions in Excel template
-            """)
-        
-        st.markdown("---")
-        
-        # Confirmation buttons
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("❌ **Cancel**", use_container_width=True):
-                # Clear everything and reset
-                for key in ['show_cost_dialog', 'pending_research', 'dialog_processed']:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-        
-        with col2:
-            if st.button(f"✅ **Proceed - ${cost:.2f}**", use_container_width=True, type="primary"):
-                # Mark dialog as processed and start research
-                st.session_state['dialog_processed'] = True
-                st.session_state['show_cost_dialog'] = False
-                st.session_state['start_research'] = True
-                st.rerun()
-    
-    # Show the dialog
-    show_cost_confirmation()
 
 def show_settings_page():
     """Settings and configuration page"""

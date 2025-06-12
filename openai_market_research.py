@@ -638,13 +638,19 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         
         # Count total questions for progress tracking
         total_questions = 0
+        total_questions_available = 0
+        
+        # First pass: count all available questions
         for layer in structured_data.get('layers', []):
             for category in layer.get('categories', []):
                 questions = category.get('questions', [])
-                if testing_mode:
-                    total_questions += min(len(questions), 2)  # Limit to 2 per category in test mode
-                else:
-                    total_questions += len(questions)
+                total_questions_available += len(questions)
+        
+        if testing_mode:
+            total_questions = min(5, total_questions_available)  # Limit to exactly 5 questions
+            print(f"🧪 Testing mode: Limiting to {total_questions} questions out of {total_questions_available} available")
+        else:
+            total_questions = total_questions_available
         
         print(f"❓ Tổng số main questions (Layer 3): {total_questions}")
         print("=" * 60)
@@ -662,6 +668,7 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         
         print("🎯 Chế độ Layer 3: Phân tích comprehensive theo category")
         processed_categories = 0
+        total_questions_processed = 0
         
         for layer in structured_data.get('layers', []):
             layer_name = layer.get('name', '')
@@ -679,11 +686,18 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
                 print(f"📋 Category [{processed_categories}]: {category_name}")
                 
                 questions = category.get('questions', [])
+                
+                # In testing mode, limit questions for this category
                 if testing_mode:
-                    questions = questions[:2]  # Limit questions in test mode
+                    questions_remaining = 5 - total_questions_processed
+                    if questions_remaining <= 0:
+                        print(f"    🧪 Testing mode: Reached 5 question limit, skipping remaining categories")
+                        break
+                    questions = questions[:min(len(questions), questions_remaining)]
                 
                 # Collect all main questions for this category
                 all_main_questions = [q.get('main_question', '') for q in questions]
+                total_questions_processed += len(all_main_questions)
                 
                 print(f"    🔄 Gom {len(all_main_questions)} questions cho comprehensive analysis...")
                 
@@ -723,12 +737,23 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
                 # Add delay to avoid rate limiting
                 time.sleep(self.delay_seconds)
                 
+                # Break if we've reached the testing limit
+                if testing_mode and total_questions_processed >= 5:
+                    print(f"    🧪 Testing mode: Reached 5 question limit")
+                    break
+                
             result['research_results'].append(layer_result)
+            
+            # Break if we've reached the testing limit
+            if testing_mode and total_questions_processed >= 5:
+                break
         
         # Final statistics
         print("=" * 60)
         print("🎉 Hoàn thành Layer 3 Category Analysis!")
         print(f"📊 Đã phân tích: {processed_categories} categories")
+        if testing_mode:
+            print(f"🧪 Testing mode: Processed {total_questions_processed} questions")
         
         # Add tracked references to result
         top_references = self.get_top_references(10)
@@ -743,6 +768,7 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         # Add research statistics
         result['research_statistics'] = {
             'total_categories_processed': processed_categories,
+            'total_questions_processed': total_questions_processed,
             'total_sources_tracked': len(self.tracked_sources),
             'total_api_calls': processed_categories,  # One call per category
             'processing_time_estimate': f"{processed_categories * self.delay_seconds / 60:.1f} minutes",
@@ -757,15 +783,21 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
         print("🎯 Chế độ Layer 4: Phân tích chi tiết theo main question")
         processed_questions = 0
         total_questions = 0
+        total_questions_available = 0
         
-        # Count total questions
+        # Count total questions available
         for layer in structured_data.get('layers', []):
             for category in layer.get('categories', []):
                 questions = category.get('questions', [])
-                if testing_mode:
-                    total_questions += min(len(questions), 2)
-                else:
-                    total_questions += len(questions)
+                total_questions_available += len(questions)
+        
+        if testing_mode:
+            total_questions = min(5, total_questions_available)  # Limit to exactly 5 questions
+            print(f"🧪 Testing mode: Limiting to {total_questions} questions out of {total_questions_available} available")
+        else:
+            total_questions = total_questions_available
+        
+        questions_remaining = total_questions if testing_mode else float('inf')
         
         for layer in structured_data.get('layers', []):
             layer_name = layer.get('name', '')
@@ -786,10 +818,17 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
                 print(f"📋 Category: {category_name}")
                 
                 questions = category.get('questions', [])
+                
+                # In testing mode, limit questions to remaining count
                 if testing_mode:
-                    questions = questions[:2]  # Limit to 2 questions per category
+                    questions_to_process = min(len(questions), questions_remaining)
+                    questions = questions[:questions_to_process]
+                    questions_remaining -= questions_to_process
                 
                 for question_data in questions:
+                    if testing_mode and processed_questions >= total_questions:
+                        break  # Stop if we've reached the limit
+                        
                     processed_questions += 1
                     progress_percent = (processed_questions / total_questions) * 100
                     
@@ -849,9 +888,19 @@ Viết một phân tích dạng văn xuôi, liền mạch theo logic:
                     # Add delay to avoid rate limiting
                     time.sleep(self.delay_seconds)
                 
-                layer_result['categories'].append(category_result)
+                if category_result['questions']:  # Only add category if it has questions
+                    layer_result['categories'].append(category_result)
                 
-            result['research_results'].append(layer_result)
+                # Break early if we've reached the testing limit
+                if testing_mode and processed_questions >= total_questions:
+                    break
+                    
+            if layer_result['categories']:  # Only add layer if it has categories
+                result['research_results'].append(layer_result)
+                
+            # Break early if we've reached the testing limit
+            if testing_mode and processed_questions >= total_questions:
+                break
         
         print("=" * 60)
         print("🎉 Hoàn thành nghiên cứu thị trường Layer 4!")

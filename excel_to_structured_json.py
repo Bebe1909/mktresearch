@@ -99,46 +99,76 @@ class ExcelToStructuredJSON:
                         for col_idx in layer_columns:
                             if col_idx < len(row):
                                 val = row.iloc[col_idx]
-                                layer_values.append(str(val) if pd.notna(val) and str(val) != 'None' else None)
+                                layer_values.append(str(val) if pd.notna(val) and str(val) != 'None' and str(val).strip() else None)
                             else:
                                 layer_values.append(None)
                         
-                        # Process layers dynamically
+                        # Process layers dynamically - find the deepest non-empty level
+                        deepest_level = -1
                         for level, value in enumerate(layer_values):
-                            if value:  # Non-empty value at this level
-                                # Reset deeper levels
-                                for deeper_level in range(level + 1, len(layer_stack)):
-                                    layer_stack[deeper_level] = None
-                                
-                                if level == 0:  # Layer 1 - Top level framework
-                                    current_layer1 = {
-                                        "name": value,
-                                        "categories": []
-                                    }
-                                    result["layers"].append(current_layer1)
-                                    layer_stack[0] = current_layer1
-                                    
-                                elif level == 1 and layer_stack[0]:  # Layer 2 - Categories
-                                    current_layer2 = {
-                                        "name": value,
-                                        "questions": []
-                                    }
-                                    layer_stack[0]["categories"].append(current_layer2)
-                                    layer_stack[1] = current_layer2
-                                    
-                                elif level == 2 and layer_stack[1]:  # Layer 3 - Main questions
-                                    question = {
-                                        "main_question": value,
-                                        "sub_questions": []
-                                    }
-                                    layer_stack[1]["questions"].append(question)
-                                    layer_stack[2] = question
-                                    
-                                elif level >= 3 and layer_stack[2]:  # Layer 4+ - Sub-questions or deeper analysis
-                                    # Add as sub-question to current main question
-                                    layer_stack[2]["sub_questions"].append(value)
-                                
-                                break  # Process only the first non-empty value in this row
+                            if value:
+                                deepest_level = level
+                        
+                        if deepest_level >= 0:
+                            # Update layer stack up to the deepest level
+                            for level in range(deepest_level + 1):
+                                value = layer_values[level]
+                                if value:  # Update this level
+                                    if level == 0:  # Layer 1 - Top level framework
+                                        # Check if this layer already exists
+                                        existing_layer = None
+                                        for layer in result["layers"]:
+                                            if layer["name"] == value:
+                                                existing_layer = layer
+                                                break
+                                        
+                                        if not existing_layer:
+                                            current_layer1 = {
+                                                "name": value,
+                                                "categories": []
+                                            }
+                                            result["layers"].append(current_layer1)
+                                            layer_stack[0] = current_layer1
+                                        else:
+                                            layer_stack[0] = existing_layer
+                                        
+                                    elif level == 1 and layer_stack[0]:  # Layer 2 - Categories
+                                        # Check if this category already exists
+                                        existing_category = None
+                                        for category in layer_stack[0]["categories"]:
+                                            if category["name"] == value:
+                                                existing_category = category
+                                                break
+                                        
+                                        if not existing_category:
+                                            current_layer2 = {
+                                                "name": value,
+                                                "questions": []
+                                            }
+                                            layer_stack[0]["categories"].append(current_layer2)
+                                            layer_stack[1] = current_layer2
+                                        else:
+                                            layer_stack[1] = existing_category
+                                        
+                                    elif level == 2 and layer_stack[1]:  # Layer 3 - Main questions
+                                        question = {
+                                            "main_question": value,
+                                            "sub_questions": []
+                                        }
+                                        layer_stack[1]["questions"].append(question)
+                                        layer_stack[2] = question
+                                        
+                                    elif level >= 3 and layer_stack[2]:  # Layer 4+ - Sub-questions
+                                        # Add as sub-question to current main question
+                                        layer_stack[2]["sub_questions"].append(value)
+                                else:
+                                    # Use previous value for this level if available
+                                    if level < len(layer_stack) and layer_stack[level] is not None:
+                                        continue  # Keep existing value
+                            
+                            # Clear deeper levels that weren't updated
+                            for level in range(deepest_level + 1, len(layer_stack)):
+                                layer_stack[level] = None
             
             # Đảm bảo folder output tồn tại
             os.makedirs(os.path.dirname(json_path), exist_ok=True)
